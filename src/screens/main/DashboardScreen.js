@@ -1,68 +1,89 @@
 // src/screens/main/DashboardScreen.js
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, TextInput } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, TextInput, ActivityIndicator } from 'react-native';
 import { Plus, X } from 'lucide-react-native';
+import { collection, onSnapshot, addDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import { COLORS, SIZES } from '../../constants/theme';
 
-const INITIAL_CHANNELS = [
-  { id: '1', name: 'Production', subtitle: 'Cross Team Communication', status: 'Online' },
-  { id: '2', name: 'Main Cam', subtitle: 'Bright Osei', status: 'Online' },
-  { id: '3', name: 'Moving Cam 1', subtitle: 'Emmanuel Tekyi', status: 'Online' },
-];
-
 export default function DashboardScreen({ navigation }) {
-  const [channels, setChannels] = useState(INITIAL_CHANNELS);
+  const [channels, setChannels] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
   const [newChannelSubtitle, setNewChannelSubtitle] = useState('');
 
-  const handleCreateChannel = () => {
+  useEffect(() => {
+    const q = query(collection(db, 'channels'), orderBy('createdAt', 'asc'));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const channelList = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setChannels(channelList);
+      setLoading(false);
+    }, (error) => {
+      console.error("Firestore listener error:", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleCreateChannel = async () => {
     if (!newChannelName.trim()) return;
 
-    const newChannel = {
-      id: Date.now().toString(),
-      name: newChannelName,
-      subtitle: newChannelSubtitle || 'Custom Channel',
-      status: 'Online',
-    };
+    try {
+      await addDoc(collection(db, 'channels'), {
+        name: newChannelName,
+        subtitle: newChannelSubtitle || 'Custom Channel',
+        status: 'Online',
+        createdAt: serverTimestamp(),
+      });
 
-    setChannels([...channels, newChannel]);
-    setNewChannelName('');
-    setNewChannelSubtitle('');
-    setModalVisible(false);
+      setNewChannelName('');
+      setNewChannelSubtitle('');
+      setModalVisible(false);
+    } catch (error) {
+      console.error("Error creating channel:", error);
+    }
   };
 
   return (
     <View style={styles.container}>
       <Text style={styles.headerTitle}>Dashboard</Text>
 
-      <ScrollView contentContainerStyle={styles.scrollList}>
-        {channels.map((channel) => (
-          <TouchableOpacity
-            key={channel.id}
-            style={styles.channelCard}
-            onPress={() => navigation.navigate('PTT', { channelName: channel.name })}
-          >
-            <View style={styles.cardContent}>
-              <Text style={styles.channelName}>{channel.name}</Text>
-              <Text style={styles.channelSubtitle}>{channel.subtitle}</Text>
-            </View>
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{channel.status}</Text>
-            </View>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {loading ? (
+        <ActivityIndicator size="large" color={COLORS.primary} style={{ flex: 1 }} />
+      ) : (
+        <ScrollView contentContainerStyle={styles.scrollList}>
+          {channels.map((channel) => (
+            <TouchableOpacity
+              key={channel.id}
+              style={styles.channelCard}
+              onPress={() => navigation.navigate('PTT', { channelName: channel.name })}
+            >
+              <View style={styles.cardContent}>
+                <Text style={styles.channelName}>{channel.name}</Text>
+                <Text style={styles.channelSubtitle}>{channel.subtitle}</Text>
+              </View>
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{channel.status || 'Online'}</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
 
-      <TouchableOpacity 
-        style={styles.createButton} 
+      <TouchableOpacity
+        style={styles.createButton}
         onPress={() => setModalVisible(true)}
       >
         <Plus color={COLORS.background} size={20} style={{ marginRight: 8 }} />
         <Text style={styles.createButtonText}>Create New Channel</Text>
       </TouchableOpacity>
 
-      {/* Creation Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
