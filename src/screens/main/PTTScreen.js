@@ -1,14 +1,16 @@
 // src/screens/main/PTTScreen.js
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
-import { Wifi, Volume2, X, Mic } from 'lucide-react-native';
+import React, { useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, Pressable, Animated, Vibration } from 'react-native';
+import { Wifi, Volume2, X, Mic, SlidersHorizontal } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
+import { Audio } from 'expo-av';
 import { COLORS, SIZES } from '../../constants/theme';
 import { useWebRTC } from '../../context/WebRTCContext';
 
-const RING_SIZE = 160;
+// Short radio beep sound (base64 audio URI)
+const BEEP_AUDIO_URI = 'data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU9vT18AAAAA//8AAAD//wAAAP//AAAA//8AAAD//wAAAP//AAAA//8AAAD//wAAAP//AAAA';
 
-// Each ring is a concentric circle: bigger rings are fainter (fades as it gets
-// bigger) and expand/brighten in response to the user's voice level.
+const RING_SIZE = 160;
 const RING_CONFIGS = [
   { base: 1.0, amp: 0.45, opacity: 0.55 },
   { base: 1.3, amp: 0.65, opacity: 0.4 },
@@ -18,30 +20,93 @@ const RING_CONFIGS = [
 
 export default function PTTScreen({ route, navigation }) {
   const { channelName = 'General' } = route.params || {};
-  const [isTransmitting, setIsTransmitting] = useState(false);
-  const { startTransmitting, stopTransmitting, levelValue } = useWebRTC();
+  const { 
+    startTransmitting, 
+    stopTransmitting, 
+    isMuted, 
+    isNoiseCancellationActive, 
+    toggleNoiseCancellation,
+    levelValue 
+  } = useWebRTC();
 
-  const handlePressIn = () => {
-    setIsTransmitting(true);
+  const soundRef = useRef(null);
+
+  // Preload radio chirp sound
+  useEffect(() => {
+    let soundObject;
+    (async () => {
+      try {
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: BEEP_AUDIO_URI },
+          { volume: 0.5 }
+        );
+        soundRef.current = sound;
+      } catch (e) {
+        console.log('Audio cue pre-load warning:', e);
+      }
+    })();
+
+    return () => {
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
+      }
+    };
+  }, []);
+
+  const playRadioBeep = async () => {
+    try {
+      if (soundRef.current) {
+        await soundRef.current.replayAsync();
+      }
+    } catch (e) {
+      // Audio playback fallback
+    }
+  };
+
+  const triggerHaptic = async (style = Haptics.ImpactFeedbackStyle.Heavy) => {
+    try {
+      await Haptics.impactAsync(style);
+    } catch (e) {
+      Vibration.vibrate(50);
+    }
+  };
+
+  const handlePressIn = async () => {
+    await triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
+    playRadioBeep();
     startTransmitting();
   };
 
-  const handlePressOut = () => {
-    setIsTransmitting(false);
+  const handlePressOut = async () => {
+    await triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    playRadioBeep();
     stopTransmitting();
   };
 
   return (
     <View style={styles.container}>
-      {/* Header Bar */}
+      {/* Top Bar */}
       <View style={styles.topBar}>
         <Pressable onPress={() => navigation.goBack()} style={styles.closeButton}>
           <X color={COLORS.text} size={28} />
         </Pressable>
+
+        <Pressable 
+          onPress={toggleNoiseCancellation}
+          style={[
+            styles.ncBadge, 
+            isNoiseCancellationActive && styles.ncBadgeActive
+          ]}
+        >
+          <SlidersHorizontal color={COLORS.text} size={14} />
+          <Text style={styles.ncText}>
+            {isNoiseCancellationActive ? 'NC Active' : 'NC Off'}
+          </Text>
+        </Pressable>
+
         <Wifi color={COLORS.primary} size={24} />
       </View>
 
-      {/* Active Channel/User Name */}
       <Text style={styles.title}>{channelName}</Text>
 
       {/* PTT Stack: 4 concentric circles that fade as they get bigger,
@@ -70,14 +135,14 @@ export default function PTTScreen({ route, navigation }) {
           onPressOut={handlePressOut}
           style={[
             styles.micButton,
-            isTransmitting && styles.micButtonActive,
+            isMuted && styles.micButtonActive,
           ]}
         >
           <Mic color={COLORS.text} size={60} />
         </Pressable>
       </View>
 
-      {/* Bottom Volume Slider Control */}
+      {/* Volume Control Bar */}
       <View style={styles.bottomControls}>
         <View style={styles.volumeIcon}>
           <Volume2 color={COLORS.background} size={24} />
@@ -106,6 +171,23 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     padding: 4,
+  },
+  ncBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.secondary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  ncBadgeActive: {
+    backgroundColor: COLORS.primary,
+  },
+  ncText: {
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   title: {
     color: COLORS.text,
