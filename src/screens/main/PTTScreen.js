@@ -1,5 +1,5 @@
 // src/screens/main/PTTScreen.js
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated, Vibration } from 'react-native';
 import { Wifi, Volume2, X, Mic, SlidersHorizontal } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -32,6 +32,8 @@ export default function PTTScreen({ route, navigation }) {
   const soundRef = useRef(null);
   const rippleAnim = useRef(new Animated.Value(0)).current;
   const rippleLoop = useRef(null);
+  const sliderWidth = useRef(0);
+  const [volume, setVolume] = useState(0.65);
 
   // Preload radio chirp sound
   useEffect(() => {
@@ -40,7 +42,7 @@ export default function PTTScreen({ route, navigation }) {
       try {
         const { sound } = await Audio.Sound.createAsync(
           { uri: BEEP_AUDIO_URI },
-          { volume: 0.5 }
+          { volume: 0.65 }
         );
         soundRef.current = sound;
       } catch (e) {
@@ -103,6 +105,17 @@ export default function PTTScreen({ route, navigation }) {
       rippleLoop.current.stop();
     }
     rippleAnim.setValue(0);
+  };
+
+  const handleVolumeChange = async (newVolume) => {
+    setVolume(newVolume);
+    try {
+      if (soundRef.current) {
+        await soundRef.current.setVolumeAsync(newVolume);
+      }
+    } catch (e) {
+      // Volume update fallback
+    }
   };
 
   return (
@@ -184,9 +197,17 @@ export default function PTTScreen({ route, navigation }) {
         <View style={styles.volumeIcon}>
           <Volume2 color={COLORS.background} size={24} />
         </View>
-        <View style={styles.sliderBar}>
-          <View style={styles.sliderFill} />
-        </View>
+        <Pressable
+          onLayout={(e) => { sliderWidth.current = e.nativeEvent.layout.width; }}
+          onPress={(e) => {
+            const x = e.nativeEvent.locationX;
+            const newVolume = Math.max(0, Math.min(1, x / sliderWidth.current));
+            handleVolumeChange(newVolume);
+          }}
+          style={styles.sliderBar}
+        >
+          <View style={[styles.sliderFill, { width: `${volume * 100}%` }]} />
+        </Pressable>
       </View>
     </View>
   );
@@ -281,7 +302,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   sliderFill: {
-    width: '65%',
     height: '100%',
     backgroundColor: COLORS.primary,
   },

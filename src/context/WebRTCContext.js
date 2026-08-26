@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { Audio } from 'expo-av';
 import { Animated } from 'react-native';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import {
   StreamVideoClient,
   StreamVideo,
@@ -60,7 +61,10 @@ export const WebRTCProvider = ({ children }) => {
         await call.join({ create: true });
         await call.camera.disable();
         await call.microphone.disable(); // start with mic not publishing
-        if (!cancelled) setActiveCall(call);
+        if (!cancelled) {
+          setActiveCall(call);
+          await activateKeepAwakeAsync();
+        }
       } catch (err) {
         console.error('Failed to join channel:', err);
       }
@@ -68,6 +72,7 @@ export const WebRTCProvider = ({ children }) => {
 
     return () => {
       cancelled = true;
+      deactivateKeepAwake();
       streamClient?.disconnectUser();
     };
   }, []);
@@ -75,11 +80,12 @@ export const WebRTCProvider = ({ children }) => {
   // Join (or switch to) a specific audio channel
   const joinChannel = async (channelId = DEFAULT_CHANNEL) => {
     if (!client) return;
-      const call = client.call('default', channelId);
-      await call.join({ create: true });
-      await call.camera.disable();
-      await call.microphone.disable(); // start with mic not publishing
-      setActiveCall(call);
+    const call = client.call('default', channelId);
+    await call.join({ create: true });
+    await call.camera.disable();
+    await call.microphone.disable(); // start with mic not publishing
+    setActiveCall(call);
+    await activateKeepAwakeAsync();
   };
 
   // --- Voice-level meter (drives the PTT ripple) ---
