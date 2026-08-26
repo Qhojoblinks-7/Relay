@@ -30,6 +30,8 @@ export default function PTTScreen({ route, navigation }) {
   } = useWebRTC();
 
   const soundRef = useRef(null);
+  const rippleAnim = useRef(new Animated.Value(0)).current;
+  const rippleLoop = useRef(null);
 
   // Preload radio chirp sound
   useEffect(() => {
@@ -75,12 +77,32 @@ export default function PTTScreen({ route, navigation }) {
     await triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
     playRadioBeep();
     startTransmitting();
+
+    rippleLoop.current = Animated.loop(
+      Animated.sequence([
+        Animated.timing(rippleAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(rippleAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
   };
 
   const handlePressOut = async () => {
     await triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     playRadioBeep();
     stopTransmitting();
+
+    if (rippleLoop.current) {
+      rippleLoop.current.stop();
+    }
+    rippleAnim.setValue(0);
   };
 
   return (
@@ -110,17 +132,32 @@ export default function PTTScreen({ route, navigation }) {
       <Text style={styles.title}>{channelName}</Text>
 
       {/* PTT Stack: 4 concentric circles that fade as they get bigger,
-          expanding & brightening with the user's voice */}
+          expanding & brightening with the user's voice and cascading ripple */}
       <View style={styles.pttContainer}>
         {RING_CONFIGS.map((cfg, i) => {
-          const scale = levelValue.interpolate({
+          const voiceScale = levelValue.interpolate({
             inputRange: [0, 1],
             outputRange: [cfg.base, cfg.base + cfg.amp],
           });
-          const opacity = levelValue.interpolate({
+          const voiceOpacity = levelValue.interpolate({
             inputRange: [0, 1],
             outputRange: [cfg.opacity * 0.25, cfg.opacity],
           });
+
+          const stagger = i / (RING_CONFIGS.length - 1);
+          const rippleScale = rippleAnim.interpolate({
+            inputRange: [stagger, stagger + 0.3],
+            outputRange: [1, 1.15],
+            extrapolate: 'clamp',
+          });
+          const rippleOpacity = rippleAnim.interpolate({
+            inputRange: [stagger, stagger + 0.3],
+            outputRange: [0, cfg.opacity * 0.7],
+            extrapolate: 'clamp',
+          });
+
+          const scale = Animated.multiply(voiceScale, rippleScale);
+          const opacity = Animated.add(voiceOpacity, rippleOpacity);
 
           return (
             <Animated.View
