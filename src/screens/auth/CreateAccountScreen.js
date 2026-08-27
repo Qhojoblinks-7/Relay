@@ -7,98 +7,133 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from "react-native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import { useAuth } from "../../context/AuthContext";
 import { globalStyles } from "../../constants/globalStyles";
-import { COLORS } from "../../constants/theme";
+import { COLORS, SIZES } from "../../constants/theme";
 
 export default function CreateAccountScreen() {
-  const { signUp, authError } = useAuth();
+  const navigation = useNavigation();
+  const route = useRoute();
+  const { signUp, joinCrewAsExistingUser, authError } = useAuth();
   const [displayName, setDisplayName] = useState("");
   const [crewName, setCrewName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const joinCrewId = route.params?.joinCrewId;
+  const joinCode = route.params?.joinCode;
+
   const handleCreate = async () => {
-    if (!displayName || !crewName || !email || !password) return;
+    if (!displayName || !email || !password) return;
     setLoading(true);
     try {
-      await signUp({ email, password, displayName, crewName });
+      await signUp({ email, password, displayName, crewName: crewName || "My Crew" });
+      if (joinCrewId && joinCode) {
+        await joinCrewAsExistingUser({ crewId: joinCrewId, code: joinCode, displayName });
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'JoinCrew', params: { joinCrewId, joinCode } }],
+        });
+      } else {
+        navigation.goBack();
+      }
     } catch (e) {
-      // authError is surfaced from context
+      // authError surfaced from context
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <View style={globalStyles.container}>
-      <Text style={styles.logoText}>
-        Rel<Text style={styles.logoHighlight}>ay</Text>
-      </Text>
-
-      <View style={styles.formContainer}>
-        <TextInput
-          style={globalStyles.input}
-          placeholder="Your name..."
-          placeholderTextColor={COLORS.textMuted}
-          value={displayName}
-          onChangeText={setDisplayName}
-          autoCapitalize="words"
-        />
-
-        <TextInput
-          style={globalStyles.input}
-          placeholder="Crew name (e.g. Stage Ops)"
-          placeholderTextColor={COLORS.textMuted}
-          value={crewName}
-          onChangeText={setCrewName}
-          autoCapitalize="words"
-        />
-
-        <TextInput
-          style={globalStyles.input}
-          placeholder="Enter email..."
-          placeholderTextColor={COLORS.textMuted}
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
-
-        <TextInput
-          style={globalStyles.input}
-          placeholder="Create password"
-          placeholderTextColor={COLORS.textMuted}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
-
-        {authError ? <Text style={styles.errorText}>{authError}</Text> : null}
-
-        <TouchableOpacity
-          style={[globalStyles.primaryButton, loading && styles.disabled]}
-          onPress={handleCreate}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color={COLORS.background} />
-          ) : (
-            <Text style={globalStyles.primaryButtonText}>Create Account</Text>
-          )}
-        </TouchableOpacity>
-
-        <Text style={globalStyles.subtitle}>
-          Start fresh, Build your Team{"\n"}and manage access
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.select({ ios: 'padding', android: 'height' })}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
+    >
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={styles.logoText}>
+          Rel<Text style={styles.logoHighlight}>ay</Text>
         </Text>
-      </View>
-    </View>
+
+        <View style={styles.formContainer}>
+          <TextInput
+            style={globalStyles.input}
+            placeholder="Your name..."
+            placeholderTextColor={COLORS.textMuted}
+            value={displayName}
+            onChangeText={setDisplayName}
+            autoCapitalize="words"
+          />
+
+          <TextInput
+            style={globalStyles.input}
+            placeholder="Crew name (e.g. Stage Ops)"
+            placeholderTextColor={COLORS.textMuted}
+            value={crewName}
+            onChangeText={setCrewName}
+            autoCapitalize="words"
+          />
+
+          <TextInput
+            style={globalStyles.input}
+            placeholder="Enter email..."
+            placeholderTextColor={COLORS.textMuted}
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+
+          <TextInput
+            style={globalStyles.input}
+            placeholder="Create password"
+            placeholderTextColor={COLORS.textMuted}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
+
+          {authError ? <Text style={styles.errorText}>{authError}</Text> : null}
+
+          <TouchableOpacity
+            style={[globalStyles.primaryButton, loading && styles.disabled]}
+            onPress={handleCreate}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color={COLORS.background} />
+            ) : (
+              <Text style={globalStyles.primaryButtonText}>Create Account</Text>
+            )}
+          </TouchableOpacity>
+
+          <Text style={globalStyles.subtitle}>
+            Start fresh, Build your Team{"\n"}and manage access
+          </Text>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  scrollContent: {
+    flexGrow: 1,
+    backgroundColor: COLORS.background,
+    paddingHorizontal: SIZES.padding,
+    paddingTop: 60,
+    paddingBottom: 40,
+    justifyContent: 'center',
+  },
   logoText: {
     color: "#FFFFFF",
     fontSize: 48,

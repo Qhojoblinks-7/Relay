@@ -159,6 +159,27 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Create a new account without a crew (for join flows).
+  const signUpOnly = async ({ email, password, displayName }) => {
+    setAuthError(null);
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      const uid = cred.user.uid;
+
+      await setDoc(doc(db, 'users', uid), {
+        displayName,
+        email,
+        createdAt: serverTimestamp(),
+      });
+
+      await loadUserProfile(uid);
+      return { uid };
+    } catch (err) {
+      setAuthError(err.message);
+      throw err;
+    }
+  };
+
   // Join an existing crew via an invite code (caller becomes a member).
   const joinCrew = async ({ email, password, displayName, crewId, code }) => {
     setAuthError(null);
@@ -188,6 +209,54 @@ export const AuthProvider = ({ children }) => {
       });
 
       // Add the new member to every existing channel so they can listen + talk.
+      const channelsSnap = await getDocs(collection(db, 'crews', crewId, 'channels'));
+      for (const ch of channelsSnap.docs) {
+        await setDoc(
+          doc(db, 'crews', crewId, 'channels', ch.id, 'members', uid),
+          { role: 'member', joinedAt: serverTimestamp() }
+        );
+      }
+
+      await loadUserProfile(uid);
+      return { uid, crewId };
+    } catch (err) {
+      setAuthError(err.message);
+      throw err;
+    }
+  };
+
+  // For users who are already signed in: join an existing crew via invite code.
+  const joinCrewAsExistingUser = async ({ crewId, code, displayName }) => {
+    setAuthError(null);
+    try {
+      if (!user) {
+        throw new Error('You must be signed in to join a crew.');
+      }
+
+      const crewDoc = await getDoc(doc(db, 'crews', crewId));
+      if (!crewDoc.exists()) {
+        throw new Error('Crew not found. Check your invite link.');
+      }
+      if (crewDoc.data().inviteCode !== code) {
+        throw new Error('Invalid or expired invite code.');
+      }
+
+      const uid = user.uid;
+
+      // Update user's crewId.
+      await updateDoc(doc(db, 'users', uid), {
+        crewId,
+        ...(displayName ? { displayName } : {}),
+      });
+
+      // Add user to crew members.
+      await setDoc(doc(db, 'crews', crewId, 'members', uid), {
+        crewRole: 'member',
+        displayName: displayName || user.email,
+        joinedAt: serverTimestamp(),
+      });
+
+      // Add user to every existing channel.
       const channelsSnap = await getDocs(collection(db, 'crews', crewId, 'channels'));
       for (const ch of channelsSnap.docs) {
         await setDoc(
@@ -237,10 +306,12 @@ export const AuthProvider = ({ children }) => {
         crewRole,
         loading,
         authError,
-        signUp,
-        joinCrew,
-        signIn,
-        logOut,
+      signUp,
+      signUpOnly,
+      joinCrew,
+      joinCrewAsExistingUser,
+      signIn,
+      logOut,
       }}
     >
       {children}

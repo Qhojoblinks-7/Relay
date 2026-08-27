@@ -15,6 +15,7 @@ export default function QRScannerScreen({ visible, onClose, onScanned }) {
       setScanned(false);
       (async () => {
         const { status } = await Camera.requestCameraPermissionsAsync();
+        console.log('[QRScanner] camera permission status:', status);
         setHasPermission(status === 'granted');
       })();
     }
@@ -32,6 +33,8 @@ export default function QRScannerScreen({ visible, onClose, onScanned }) {
   };
 
   if (!visible) return null;
+
+  console.log('[QRScanner] render state:', { visible, hasPermission, scanned });
 
   if (hasPermission === null) {
     return (
@@ -58,50 +61,54 @@ export default function QRScannerScreen({ visible, onClose, onScanned }) {
         ref={cameraRef}
         style={styles.camera}
         facing="back"
+        mute
+        barcodeScannerEnabled
         onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
         barcodeScannerSettings={{
           barcodeTypes: ['qr'],
         }}
-      >
-        <View style={styles.overlay}>
-          <View style={styles.topBar}>
-            <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-              <X color={COLORS.text} size={28} />
-            </TouchableOpacity>
-          </View>
+      />
 
-          <View style={styles.scanArea}>
-            <View style={styles.scanFrame} />
-          </View>
-
-          <View style={styles.bottomBar}>
-            <Text style={styles.instruction}>Point your camera at a QR code</Text>
-            {scanned && (
-              <TouchableOpacity
-                style={styles.rescanButton}
-                onPress={() => setScanned(false)}
-              >
-                <Text style={styles.rescanText}>Tap to scan again</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+      <View style={styles.overlay}>
+        <View style={styles.topBar}>
+          <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
+            <X color={COLORS.text} size={28} />
+          </TouchableOpacity>
         </View>
-      </CameraView>
+
+        <View style={styles.scanArea}>
+          <View style={styles.scanFrame} />
+        </View>
+
+        <View style={styles.bottomBar}>
+          <Text style={styles.instruction}>Point your camera at a QR code</Text>
+          {scanned && (
+            <TouchableOpacity
+              style={styles.rescanButton}
+              onPress={() => setScanned(false)}
+            >
+              <Text style={styles.rescanText}>Tap to scan again</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: '#000',
+    zIndex: 999,
   },
   camera: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
   },
   overlay: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'transparent',
+    zIndex: 1,
   },
   topBar: {
     flexDirection: 'row',
