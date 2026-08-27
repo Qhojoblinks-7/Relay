@@ -6,30 +6,57 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  ActivityIndicator,
 } from "react-native";
 import { useAuth } from "../../context/AuthContext";
 import { globalStyles } from "../../constants/globalStyles";
 import { COLORS } from "../../constants/theme";
 
 export default function CreateAccountScreen() {
-  const { login } = useAuth();
+  const { signUp, authError } = useAuth();
+  const [displayName, setDisplayName] = useState("");
+  const [crewName, setCrewName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleCreate = () => {
-    console.log("Creating account for:", email);
-    // Future: Connect to Firebase/Supabase auth
-    login();
+  const handleCreate = async () => {
+    if (!displayName || !crewName || !email || !password) return;
+    setLoading(true);
+    try {
+      await signUp({ email, password, displayName, crewName });
+    } catch (e) {
+      // authError is surfaced from context
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <View style={globalStyles.container}>
-      {/* Placeholder for your actual Logo Image */}
       <Text style={styles.logoText}>
         Rel<Text style={styles.logoHighlight}>ay</Text>
       </Text>
 
       <View style={styles.formContainer}>
+        <TextInput
+          style={globalStyles.input}
+          placeholder="Your name..."
+          placeholderTextColor={COLORS.textMuted}
+          value={displayName}
+          onChangeText={setDisplayName}
+          autoCapitalize="words"
+        />
+
+        <TextInput
+          style={globalStyles.input}
+          placeholder="Crew name (e.g. Stage Ops)"
+          placeholderTextColor={COLORS.textMuted}
+          value={crewName}
+          onChangeText={setCrewName}
+          autoCapitalize="words"
+        />
+
         <TextInput
           style={globalStyles.input}
           placeholder="Enter email..."
@@ -49,11 +76,18 @@ export default function CreateAccountScreen() {
           secureTextEntry
         />
 
+        {authError ? <Text style={styles.errorText}>{authError}</Text> : null}
+
         <TouchableOpacity
-          style={globalStyles.primaryButton}
+          style={[globalStyles.primaryButton, loading && styles.disabled]}
           onPress={handleCreate}
+          disabled={loading}
         >
-          <Text style={globalStyles.primaryButtonText}>Create Account</Text>
+          {loading ? (
+            <ActivityIndicator color={COLORS.background} />
+          ) : (
+            <Text style={globalStyles.primaryButtonText}>Create Account</Text>
+          )}
         </TouchableOpacity>
 
         <Text style={globalStyles.subtitle}>
@@ -69,7 +103,7 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 48,
     fontWeight: "bold",
-    marginBottom: 60,
+    marginBottom: 40,
   },
   logoHighlight: {
     color: COLORS.primary,
@@ -77,5 +111,14 @@ const styles = StyleSheet.create({
   formContainer: {
     width: "100%",
     alignItems: "center",
+  },
+  errorText: {
+    color: "#FF4D4D",
+    fontSize: 13,
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  disabled: {
+    opacity: 0.6,
   },
 });

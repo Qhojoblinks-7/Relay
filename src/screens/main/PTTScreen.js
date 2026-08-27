@@ -19,14 +19,17 @@ const RING_CONFIGS = [
 ];
 
 export default function PTTScreen({ route, navigation }) {
-  const { channelName = 'General' } = route.params || {};
-  const { 
-    startTransmitting, 
-    stopTransmitting, 
-    isMuted, 
-    isNoiseCancellationActive, 
+  const { crewId, channelId, channelName = 'General' } = route.params || {};
+  const {
+    startTransmitting,
+    stopTransmitting,
+    isMuted,
+    isNoiseCancellationActive,
     toggleNoiseCancellation,
-    levelValue 
+    levelValue,
+    ready,
+    canTalk,
+    joinChannel,
   } = useWebRTC();
 
   const soundRef = useRef(null);
@@ -76,6 +79,7 @@ export default function PTTScreen({ route, navigation }) {
   };
 
   const handlePressIn = async () => {
+    if (!canTalk) return;
     await triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
     playRadioBeep();
     startTransmitting();
@@ -118,6 +122,15 @@ export default function PTTScreen({ route, navigation }) {
     }
   };
 
+  // Switch the audio room to the selected crew channel once the voice client
+  // is ready. Non-members will be rejected inside joinChannel.
+  useEffect(() => {
+    if (!ready || !crewId || !channelId) return;
+    joinChannel(crewId, channelId).catch((e) => {
+      console.warn('[PTT] Could not join channel:', e.message);
+    });
+  }, [ready, crewId, channelId, joinChannel]);
+
   return (
     <View style={styles.container}>
       {/* Top Bar */}
@@ -126,11 +139,11 @@ export default function PTTScreen({ route, navigation }) {
           <X color={COLORS.text} size={28} />
         </Pressable>
 
-        <Pressable 
+        <Pressable
           onPress={toggleNoiseCancellation}
           style={[
-            styles.ncBadge, 
-            isNoiseCancellationActive && styles.ncBadgeActive
+            styles.ncBadge,
+            isNoiseCancellationActive && styles.ncBadgeActive,
           ]}
         >
           <SlidersHorizontal color={COLORS.text} size={14} />
@@ -144,8 +157,7 @@ export default function PTTScreen({ route, navigation }) {
 
       <Text style={styles.title}>{channelName}</Text>
 
-      {/* PTT Stack: 4 concentric circles that fade as they get bigger,
-          expanding & brightening with the user's voice and cascading ripple */}
+      {/* PTT Stack */}
       <View style={styles.pttContainer}>
         {RING_CONFIGS.map((cfg, i) => {
           const voiceScale = levelValue.interpolate({
@@ -183,13 +195,19 @@ export default function PTTScreen({ route, navigation }) {
         <Pressable
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
+          disabled={!canTalk}
           style={[
             styles.micButton,
             isMuted && styles.micButtonActive,
+            !canTalk && styles.micButtonDisabled,
           ]}
         >
           <Mic color={COLORS.text} size={60} />
         </Pressable>
+
+        {!canTalk && (
+          <Text style={styles.listenOnlyText}>Listen-only · observers can't transmit</Text>
+        )}
       </View>
 
       {/* Volume Control Bar */}
@@ -280,6 +298,15 @@ const styles = StyleSheet.create({
   },
   micButtonActive: {
     backgroundColor: '#D96500',
+  },
+  micButtonDisabled: {
+    opacity: 0.4,
+  },
+  listenOnlyText: {
+    color: COLORS.textMuted,
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 16,
   },
   bottomControls: {
     flexDirection: 'row',

@@ -5,12 +5,14 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#1C1412",
+    "scheme": "relay",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#1C1412"
     },
     "ios": {
       "supportsTablet": true,
@@ -26,7 +28,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#1C1412"
       },
       "edgeToEdgeEnabled": true,
       "permissions": [
@@ -69,6 +71,9 @@
     "extra": {
       "eas": {
         "projectId": "7ddc4c74-4862-4eb7-b42c-8612a585d552"
+      },
+      "getstream": {
+        "apiKey": "prt2s7y2rc45"
       }
     }
   }

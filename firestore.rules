@@ -1,0 +1,91 @@
+rules_version = '2';
+
+// Relay — Firestore Security Rules
+// Membership + roles are the source of truth. UI gating is convenience only;
+// these rules are the real enforcement boundary.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // ---- Role lookups (use request.auth.uid directly; no free `uid` var) ----
+    function crewRoleOf(crewId) {
+      return get(/databases/$(database)/documents/crews/$(crewId)/members/$(request.auth.uid)).data.crewRole;
+    }
+    function isCrewMember(crewId) {
+      return exists(/databases/$(database)/documents/crews/$(crewId)/members/$(request.auth.uid));
+    }
+    function isCrewOwnerOrAdmin(crewId) {
+      return crewRoleOf(crewId) == 'owner' || crewRoleOf(crewId) == 'admin';
+    }
+
+    function channelRoleOf(crewId, channelId) {
+      return get(/databases/$(database)/documents/crews/$(crewId)/channels/$(channelId)/members/$(request.auth.uid)).data.role;
+    }
+    function isChannelAdmin(crewId, channelId) {
+      return channelRoleOf(crewId, channelId) == 'admin';
+    }
+
+    // ---- Users --------------------------------------------------------------
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow create, update, delete: if signedIn() && userId == request.auth.uid;
+    }
+
+    // ---- Crews --------------------------------------------------------------
+    match /crews/{crewId} {
+      allow read: if isCrewMember(crewId);
+      // Anyone signed-in may create a crew (they become its owner client-side).
+      allow create: if signedIn();
+      // Update/delete (incl. rotating inviteCode) is owner/admin only.
+      allow update, delete: if isCrewOwnerOrAdmin(crewId);
+
+      // Crew-level membership (crewRole: owner|admin|member|observer)
+      match /members/{memberId} {
+        allow read: if isCrewMember(crewId);
+        // Self-service join: a user may only create THEIR OWN member doc, and
+        // never as an observer (observers are assigned by admins). Invite-code
+        // validation happens client-side / via the join Cloud Function.
+        allow create: if signedIn()
+          && memberId == request.auth.uid
+          && request.resource.data.crewRole != 'observer';
+        // Self updates are limited to non-observer fields (e.g. presence);
+        // owners/admins may manage any member's role.
+        allow update: if signedIn() && (
+          (memberId == request.auth.uid && request.resource.data.crewRole != 'observer')
+          || isCrewOwnerOrAdmin(crewId)
+        );
+        // Removing members is owner/admin only, and never the crew owner.
+        allow delete: if isCrewOwnerOrAdmin(crewId)
+          && memberId != get(/databases/$(database)/documents/crews/$(crewId)).data.ownerUid;
+      }
+
+      // ---- Channels ---------------------------------------------------------
+      match /channels/{channelId} {
+        allow read: if isCrewMember(crewId);
+        // Create a top-level channel: owner/admin only.
+        allow create: if isCrewOwnerOrAdmin(crewId);
+        // Rename/delete a channel: channel admin only.
+        allow update, delete: if isChannelAdmin(crewId, channelId);
+
+        // Channel-scoped membership (role: admin|member|observer)
+        match /members/{memberId} {
+          allow read: if isCrewMember(crewId);
+          allow create, update: if signedIn() && (
+            // Self join as a regular member (joinCrew / add to open channels).
+            (memberId == request.auth.uid && request.resource.data.role != 'admin')
+            // Admins/owners may manage this channel's roster (incl. observers).
+            || isChannelAdmin(crewId, channelId)
+            || isCrewOwnerOrAdmin(crewId)
+          );
+          allow delete: if isChannelAdmin(crewId, channelId)
+            || isCrewOwnerOrAdmin(crewId)
+            || memberId == request.auth.uid;
+        }
+      }
+    }
+  }
+}

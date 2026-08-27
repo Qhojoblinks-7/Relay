@@ -1,16 +1,29 @@
 // src/screens/main/SettingsScreen.js
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Switch, TouchableOpacity } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Switch, TouchableOpacity } from 'react-native';
 import { SlidersHorizontal, Volume2, LogOut, Shield } from 'lucide-react-native';
 import { COLORS, SIZES } from '../../constants/theme';
 import { useWebRTC } from '../../context/WebRTCContext';
 import { useAuth } from '../../context/AuthContext';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 
 export default function SettingsScreen() {
-  const { isNoiseCancellationActive, toggleNoiseCancellation } = useWebRTC();
-  const { logout } = useAuth();
+  const { isNoiseCancellationActive, toggleNoiseCancellation, disconnect } = useWebRTC();
+  const { logout, profile, crew, crewRole, user } = useAuth();
+  const [displayName, setDisplayName] = useState(profile?.displayName || '');
   const [highQualityAudio, setHighQualityAudio] = useState(true);
   const [pttBeep, setPttBeep] = useState(true);
+
+  const handleLogout = async () => {
+    disconnect();
+    await logout();
+  };
+
+  const handleSaveProfile = async () => {
+    if (!user || !displayName.trim()) return;
+    await updateDoc(doc(db, 'users', user.uid), { displayName: displayName.trim() });
+  };
 
   return (
     <View style={styles.container}>
@@ -48,11 +61,22 @@ export default function SettingsScreen() {
 
       <View style={styles.section}>
         <Text style={styles.sectionHeader}>Account & Crew</Text>
-        <Text style={styles.subtext}>Logged in as: Admin Operator</Text>
-        <Text style={styles.subtext}>Crew ID: PRD-ACC-2026</Text>
+        <TextInput
+          style={styles.profileInput}
+          placeholder="Display name"
+          placeholderTextColor={COLORS.textMuted}
+          value={displayName}
+          onChangeText={setDisplayName}
+        />
+        <TouchableOpacity style={styles.saveButton} onPress={handleSaveProfile}>
+          <Text style={styles.saveButtonText}>Save Profile</Text>
+        </TouchableOpacity>
+        <Text style={styles.subtext}>Email: {user?.email || "—"}</Text>
+        <Text style={styles.subtext}>Crew: {crew?.name || "—"}</Text>
+        <Text style={styles.subtext}>Role: {crewRole || "none"}</Text>
       </View>
 
-      <TouchableOpacity style={styles.logoutButton} onPress={logout}>
+      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
         <LogOut color="#FF4D4D" size={20} style={{ marginRight: 8 }} />
         <Text style={styles.logoutText}>Leave Crew / Log Out</Text>
       </TouchableOpacity>
@@ -106,6 +130,28 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 14,
     marginBottom: 6,
+  },
+  profileInput: {
+    backgroundColor: COLORS.background,
+    borderColor: COLORS.secondary,
+    borderWidth: 2,
+    borderRadius: SIZES.radius,
+    color: COLORS.text,
+    padding: 12,
+    fontSize: 15,
+    marginBottom: 12,
+  },
+  saveButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: SIZES.radius,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  saveButtonText: {
+    color: COLORS.background,
+    fontWeight: 'bold',
+    fontSize: 15,
   },
   logoutButton: {
     flexDirection: 'row',
