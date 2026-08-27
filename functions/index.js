@@ -62,7 +62,9 @@ exports.getStreamToken = functions.https.onCall(async (data, context) => {
       .doc(`crews/${crewId}/channels/${ch.id}/members/${uid}`)
       .get();
     if (memberSnap.exists()) {
-      callCids.push(`${crewId}:${ch.id}`);
+      // Call cid = `type:id`; the client creates `default` calls with id
+      // `crewId_channelId` (GetStream ids allow only a-z, 0-9, _ and -).
+      callCids.push(`default:${crewId}_${ch.id}`);
     }
   }
 

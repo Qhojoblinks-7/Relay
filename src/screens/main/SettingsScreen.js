@@ -1,7 +1,7 @@
 // src/screens/main/SettingsScreen.js
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Switch, TouchableOpacity } from 'react-native';
-import { SlidersHorizontal, Volume2, LogOut, Shield } from 'lucide-react-native';
+import { View, Text, TextInput, StyleSheet, Switch, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { SlidersHorizontal, Volume2, LogOut, Shield, Speaker } from 'lucide-react-native';
 import { COLORS, SIZES } from '../../constants/theme';
 import { useWebRTC } from '../../context/WebRTCContext';
 import { useAuth } from '../../context/AuthContext';
@@ -9,15 +9,15 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 
 export default function SettingsScreen() {
-  const { isNoiseCancellationActive, toggleNoiseCancellation, disconnect } = useWebRTC();
-  const { logout, profile, crew, crewRole, user } = useAuth();
+  const { isNoiseCancellationActive, toggleNoiseCancellation, isSpeakerphone, toggleSpeakerphone, disconnect } = useWebRTC();
+  const { logOut, profile, crew, crewRole, user } = useAuth();
   const [displayName, setDisplayName] = useState(profile?.displayName || '');
   const [highQualityAudio, setHighQualityAudio] = useState(true);
   const [pttBeep, setPttBeep] = useState(true);
 
   const handleLogout = async () => {
-    disconnect();
-    await logout();
+    await disconnect();
+    await logOut();
   };
 
   const handleSaveProfile = async () => {
@@ -26,10 +26,18 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.headerTitle}>Settings</Text>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.select({ ios: 'padding', android: 'height' })}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
+    >
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={styles.headerTitle}>Settings</Text>
 
-      <View style={styles.section}>
+        <View style={styles.section}>
         <Text style={styles.sectionHeader}>Audio Controls</Text>
 
         <View style={styles.row}>
@@ -57,6 +65,19 @@ export default function SettingsScreen() {
             thumbColor={COLORS.text}
           />
         </View>
+
+        <View style={styles.row}>
+          <View style={styles.rowLabel}>
+            <Speaker color={COLORS.primary} size={20} />
+            <Text style={styles.rowText}>Speakerphone</Text>
+          </View>
+          <Switch
+            value={isSpeakerphone}
+            onValueChange={toggleSpeakerphone}
+            trackColor={{ false: COLORS.secondary, true: COLORS.primary }}
+            thumbColor={COLORS.text}
+          />
+        </View>
       </View>
 
       <View style={styles.section}>
@@ -80,11 +101,19 @@ export default function SettingsScreen() {
         <LogOut color="#FF4D4D" size={20} style={{ marginRight: 8 }} />
         <Text style={styles.logoutText}>Leave Crew / Log Out</Text>
       </TouchableOpacity>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  scrollContent: {
+    flexGrow: 1,
+    backgroundColor: COLORS.background,
+    paddingTop: 60,
+    paddingHorizontal: SIZES.padding,
+    paddingBottom: 40,
+  },
   container: {
     flex: 1,
     backgroundColor: COLORS.background,

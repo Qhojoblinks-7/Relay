@@ -30,6 +30,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1C1412"
       },
+      "androidSoftInputMode": "adjustResize",
       "edgeToEdgeEnabled": true,
       "permissions": [
         "android.permission.VIBRATE",
@@ -73,7 +74,17 @@
         "projectId": "7ddc4c74-4862-4eb7-b42c-8612a585d552"
       },
       "getstream": {
-        "apiKey": "prt2s7y2rc45"
+        "apiKey": "prt2s7y2rc45",
+        "useDevToken": true,
+        "secret": "bgx3h8fpzhf38ttjpbfhs7g93css7kqwkhyekehrm758aq3b6yftgj4u2xhxjnxv"
+      },
+      "firebase": {
+        "apiKey": "AIzaSyC3BMbYtSLDmzZN-2Y_fkrKCDJ5Jc0HfdE",
+        "authDomain": "relay-6273b-8832.firebaseapp.com",
+        "projectId": "relay-6273b-8832",
+        "storageBucket": "relay-6273b-8832.firebasestorage.app",
+        "messagingSenderId": "841841612894",
+        "appId": "1:841841612894:web:93910d45aa26797869bccf"
       }
     }
   }

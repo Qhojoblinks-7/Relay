@@ -8,6 +8,7 @@ import { useNavigation } from '@react-navigation/native';
 import GetStartedScreen from '../screens/auth/GetStartedScreen';
 import JoinCrewScreen from '../screens/auth/JoinCrewScreen';
 import CreateAccountScreen from '../screens/auth/CreateAccountScreen';
+import SignInScreen from '../screens/auth/SignInScreen';
 
 // Route to JoinCrew (pre-filled) when an invite deep link is opened.
 function useInviteDeepLink() {
@@ -40,6 +41,7 @@ export default function AuthStack() {
       <Stack.Screen name="GetStarted" component={GetStartedScreen} />
       <Stack.Screen name="JoinCrew" component={JoinCrewScreen} />
       <Stack.Screen name="CreateAccount" component={CreateAccountScreen} />
+      <Stack.Screen name="SignIn" component={SignInScreen} />
     </Stack.Navigator>
   );
 }

@@ -1,6 +1,7 @@
 // src/screens/main/PTTScreen.js
 import React, { useRef, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated, Vibration } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Wifi, Volume2, X, Mic, SlidersHorizontal } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Audio } from 'expo-av';
@@ -30,13 +31,26 @@ export default function PTTScreen({ route, navigation }) {
     ready,
     canTalk,
     joinChannel,
+    leaveChannel,
+    activeChannel,
+    channelBusy,
+    currentSpeaker,
   } = useWebRTC();
 
   const soundRef = useRef(null);
   const rippleAnim = useRef(new Animated.Value(0)).current;
   const rippleLoop = useRef(null);
   const sliderWidth = useRef(0);
+  const joinChannelRef = useRef(joinChannel);
+  const leaveChannelRef = useRef(leaveChannel);
   const [volume, setVolume] = useState(0.65);
+
+  joinChannelRef.current = joinChannel;
+  leaveChannelRef.current = leaveChannel;
+
+  useEffect(() => {
+    console.log('[PTT] mount');
+  }, []);
 
   // Preload radio chirp sound
   useEffect(() => {
@@ -79,10 +93,17 @@ export default function PTTScreen({ route, navigation }) {
   };
 
   const handlePressIn = async () => {
-    if (!canTalk) return;
+    if (!canTalk || channelBusy) return;
+    // Stop any in-flight ripple loop before starting a new one.
+    if (rippleLoop.current) {
+      rippleLoop.current.stop();
+      rippleLoop.current = null;
+    }
+    rippleAnim.setValue(0);
     await triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
     playRadioBeep();
-    startTransmitting();
+    const started = await startTransmitting();
+    if (!started) return;
 
     rippleLoop.current = Animated.loop(
       Animated.sequence([
@@ -101,14 +122,17 @@ export default function PTTScreen({ route, navigation }) {
   };
 
   const handlePressOut = async () => {
-    await triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-    playRadioBeep();
-    stopTransmitting();
-
+    // Reset the ripple immediately, independent of any async backend work
+    // (stopTransmitting writes Firestore presence; if it blocks, the loop
+    // would otherwise keep animating forever).
     if (rippleLoop.current) {
       rippleLoop.current.stop();
+      rippleLoop.current = null;
     }
     rippleAnim.setValue(0);
+    await triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    playRadioBeep();
+    stopTransmitting(); // fire-and-forget
   };
 
   const handleVolumeChange = async (newVolume) => {
@@ -125,17 +149,33 @@ export default function PTTScreen({ route, navigation }) {
   // Switch the audio room to the selected crew channel once the voice client
   // is ready. Non-members will be rejected inside joinChannel.
   useEffect(() => {
+    console.log('[PTT] join effect', { ready, crewId, channelId });
     if (!ready || !crewId || !channelId) return;
-    joinChannel(crewId, channelId).catch((e) => {
+    console.log('[PTT] joining channel', { crewId, channelId, channelName });
+    joinChannelRef.current(crewId, channelId).catch((e) => {
       console.warn('[PTT] Could not join channel:', e.message);
     });
-  }, [ready, crewId, channelId, joinChannel]);
+  }, [ready, crewId, channelId]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('[PTT] screen focused', { ready, crewId, channelId });
+      if (!ready || !crewId || !channelId) return;
+      joinChannelRef.current(crewId, channelId).catch((e) => {
+        console.warn('[PTT] focus join failed:', e.message);
+      });
+      return () => {
+        console.log('[PTT] screen unfocused, leaving channel');
+        leaveChannelRef.current?.();
+      };
+    }, [ready, crewId, channelId])
+  );
 
   return (
     <View style={styles.container}>
       {/* Top Bar */}
       <View style={styles.topBar}>
-        <Pressable onPress={() => navigation.goBack()} style={styles.closeButton}>
+        <Pressable onPress={() => { leaveChannelRef.current?.(); navigation.goBack(); }} style={styles.closeButton}>
           <X color={COLORS.text} size={28} />
         </Pressable>
 
@@ -204,9 +244,28 @@ export default function PTTScreen({ route, navigation }) {
         >
           <Mic color={COLORS.text} size={60} />
         </Pressable>
+      </View>
 
+      <View style={styles.pttStatus}>
+        {channelBusy && currentSpeaker && (
+          <Text style={styles.speakerText}>{currentSpeaker} is talking</Text>
+        )}
+        {channelBusy && !currentSpeaker && (
+          <Text style={styles.speakerText}>Channel busy</Text>
+        )}
+        {!canTalk && (
+          <Pressable onPress={() => crewId && channelId && joinChannelRef.current(crewId, channelId).catch((e) => console.warn('[PTT] retry join failed:', e.message))}>
+            <Text style={styles.listenOnlyText}>Retry Join</Text>
+          </Pressable>
+        )}
         {!canTalk && (
           <Text style={styles.listenOnlyText}>Listen-only · observers can't transmit</Text>
+        )}
+        {canTalk && !channelBusy && (
+          <Text style={styles.listenOnlyText}>Ready to transmit</Text>
+        )}
+        {canTalk && channelBusy && (
+          <Text style={styles.listenOnlyText}>Wait for channel to clear</Text>
         )}
       </View>
 
@@ -275,7 +334,13 @@ const styles = StyleSheet.create({
     position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
-    height: 300,
+    height: 480,
+    marginTop: 40,
+    overflow: 'hidden',
+  },
+  pttStatus: {
+    alignItems: 'center',
+    marginTop: 12,
   },
   ring: {
     position: 'absolute',
@@ -305,6 +370,13 @@ const styles = StyleSheet.create({
   listenOnlyText: {
     color: COLORS.textMuted,
     fontSize: 13,
+    textAlign: 'center',
+    marginTop: 16,
+  },
+  speakerText: {
+    color: COLORS.primary,
+    fontSize: 14,
+    fontWeight: 'bold',
     textAlign: 'center',
     marginTop: 16,
   },

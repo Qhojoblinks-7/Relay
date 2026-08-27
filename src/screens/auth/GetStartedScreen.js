@@ -28,6 +28,13 @@ export default function GetStartedScreen() {
           Create your own Crew
         </Text>
       </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[globalStyles.secondaryButton, { marginTop: 12 }]}
+        onPress={() => navigation.navigate("SignIn")}
+      >
+        <Text style={globalStyles.secondaryButtonText}>Sign In</Text>
+      </TouchableOpacity>
     </View>
   );
 }
