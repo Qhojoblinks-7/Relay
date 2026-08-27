@@ -17,6 +17,7 @@ import {
   addDoc,
   updateDoc,
   serverTimestamp,
+  onSnapshot,
 } from 'firebase/firestore';
 import { generateInviteCode } from '../lib/invite';
 import { setPresence } from '../lib/presence';
@@ -95,6 +96,19 @@ export const AuthProvider = ({ children }) => {
     });
     return () => sub.remove();
   }, [user, crewId]);
+
+  // Keep crew data live (name, inviteCode, etc.).
+  useEffect(() => {
+    if (!crewId) {
+      setCrew(null);
+      return;
+    }
+    const unsub = onSnapshot(doc(db, 'crews', crewId), (snap) => {
+      if (snap.exists()) setCrew(snap.data());
+      else setCrew(null);
+    });
+    return unsub;
+  }, [crewId]);
 
   // Register this device for FCM push + listen for foreground messages.
   useEffect(() => {

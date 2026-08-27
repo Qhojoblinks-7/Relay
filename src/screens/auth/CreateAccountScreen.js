@@ -1,5 +1,5 @@
 // src/screens/auth/CreateAccountScreen.js
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   View,
   Text,
@@ -19,29 +19,39 @@ import { COLORS, SIZES } from "../../constants/theme";
 export default function CreateAccountScreen() {
   const navigation = useNavigation();
   const route = useRoute();
-  const { signUp, joinCrewAsExistingUser, authError } = useAuth();
+  const { signUp, signUpOnly, joinCrewAsExistingUser, authError, loading: authLoading } = useAuth();
   const [displayName, setDisplayName] = useState("");
   const [crewName, setCrewName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const pendingNav = useRef(null);
 
   const joinCrewId = route.params?.joinCrewId;
   const joinCode = route.params?.joinCode;
+
+  useEffect(() => {
+    if (!authLoading && pendingNav.current) {
+      const target = pendingNav.current;
+      pendingNav.current = null;
+      navigation.reset({
+        index: 0,
+        routes: [target],
+      });
+    }
+  }, [authLoading, navigation]);
 
   const handleCreate = async () => {
     if (!displayName || !email || !password) return;
     setLoading(true);
     try {
-      await signUp({ email, password, displayName, crewName: crewName || "My Crew" });
       if (joinCrewId && joinCode) {
+        await signUpOnly({ email, password, displayName });
         await joinCrewAsExistingUser({ crewId: joinCrewId, code: joinCode, displayName });
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'JoinCrew', params: { joinCrewId, joinCode } }],
-        });
+        pendingNav.current = { name: 'MainTabs' };
       } else {
-        navigation.goBack();
+        await signUp({ email, password, displayName, crewName: crewName || "My Crew" });
+        pendingNav.current = { name: 'MainTabs' };
       }
     } catch (e) {
       // authError surfaced from context

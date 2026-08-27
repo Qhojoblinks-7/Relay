@@ -62,7 +62,6 @@ export default function QRScannerScreen({ visible, onClose, onScanned }) {
         style={styles.camera}
         facing="back"
         mute
-        barcodeScannerEnabled
         onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
         barcodeScannerSettings={{
           barcodeTypes: ['qr'],

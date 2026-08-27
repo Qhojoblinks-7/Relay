@@ -19,6 +19,7 @@ import { db } from '../../lib/firebase';
 export default function DashboardScreen({ navigation }) {
   const { user, crewId, crewRole } = useAuth();
   const [channels, setChannels] = useState([]);
+  const [members, setMembers] = useState([]);
   const [showCreateChannel, setShowCreateChannel] = useState(false);
 
   // Only crew owners/admins may create top-level channels.
@@ -45,6 +46,23 @@ export default function DashboardScreen({ navigation }) {
     );
     return unsub;
   }, [crewId, user?.uid]);
+
+  // Live crew roster for assigning members to new channels.
+  useEffect(() => {
+    if (!crewId) return;
+    const unsub = onSnapshot(
+      collection(db, 'crews', crewId, 'members'),
+      (snap) => {
+        setMembers(
+          snap.docs.map((d) => {
+            const data = d.data();
+            return { id: d.id, name: data.displayName };
+          })
+        );
+      }
+    );
+    return unsub;
+  }, [crewId]);
 
   const handleCreateChannel = async ({ name, memberIds }) => {
     if (!name?.trim() || !crewId || !user) return;
@@ -129,7 +147,7 @@ export default function DashboardScreen({ navigation }) {
         mode="channel"
         title="Create New Channel"
         dropdownLabel="Assign Members"
-        items={[]}
+        items={members.filter((m) => m.id !== user?.uid)}
         submitText="Create Channel"
         onSubmit={handleCreateChannel}
       />

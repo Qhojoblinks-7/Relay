@@ -1,13 +1,14 @@
 // src/screens/main/MyCrewScreen.js
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Share, Alert } from 'react-native';
-import { UserPlus, UserMinus, Circle, RefreshCw } from 'lucide-react-native';
+import { UserPlus, UserMinus, Circle, RefreshCw, QrCode } from 'lucide-react-native';
 import { COLORS, SIZES } from '../../constants/theme';
 import { useAuth } from '../../context/AuthContext';
 import { buildInviteLink, generateInviteCode } from '../../lib/invite';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc, serverTimestamp, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import AddMemberBottomSheet from '../../components/AddMemberBottomSheet';
+import QRCodeModal from '../../components/QRCodeModal';
 
 function presenceColor(presence) {
   if (presence === 'busy') return COLORS.primary;
@@ -22,9 +23,11 @@ function presenceLabel(presence) {
 }
 
 export default function MyCrewScreen() {
-  const { crew, crewId, crewRole, user } = useAuth();
+  const { crew, crewId, crewRole, user, signUpOnly } = useAuth();
   const [members, setMembers] = useState([]);
+  const [channels, setChannels] = useState([]);
   const [showAddMember, setShowAddMember] = useState(false);
+  const [showQR, setShowQR] = useState(false);
 
   // Live crew roster (incl. presence) from Firestore.
   useEffect(() => {
@@ -38,13 +41,59 @@ export default function MyCrewScreen() {
     return unsub;
   }, [crewId]);
 
+  // Live channel list for assigning new members.
+  useEffect(() => {
+    if (!crewId) return;
+    const unsub = onSnapshot(
+      collection(db, 'crews', crewId, 'channels'),
+      (snap) => {
+        setChannels(snap.docs.map((d) => ({ id: d.id, name: d.data().name })));
+      }
+    );
+    return unsub;
+  }, [crewId]);
+
   // Only crew owners/admins may manage the crew (invite, add, remove, rotate).
   const isAdmin = crewRole === 'owner' || crewRole === 'admin';
 
   const transmitting = members.filter((m) => m.presence === 'busy');
 
-  const handleAddMember = ({ name, channelIds }) => {
-    console.log('New member:', name, 'assigned to channels:', channelIds);
+  const handleAddMember = async ({ name, channelIds }) => {
+    if (!name?.trim() || !crewId || !user) return;
+    const email = `${name.trim().toLowerCase().replace(/\s+/g, '.')}@relay.crew`;
+    const password = Math.random().toString(36).slice(-8);
+
+    try {
+      const { uid } = await signUpOnly({ email, password, displayName: name.trim() });
+
+      await setDoc(doc(db, 'users', uid), {
+        displayName: name.trim(),
+        email,
+        crewId,
+        createdAt: serverTimestamp(),
+      });
+
+      await setDoc(doc(db, 'crews', crewId, 'members', uid), {
+        crewRole: 'member',
+        displayName: name.trim(),
+        joinedAt: serverTimestamp(),
+      });
+
+      const targetChannelIds = Array.isArray(channelIds) && channelIds.length > 0
+        ? channelIds
+        : (await getDocs(collection(db, 'crews', crewId, 'channels'))).docs.map((d) => d.id);
+
+      for (const chId of targetChannelIds) {
+        await setDoc(doc(db, 'crews', crewId, 'channels', chId, 'members', uid), {
+          role: 'member',
+          joinedAt: serverTimestamp(),
+        });
+      }
+
+      Alert.alert('Member Added', `Credentials for ${name}:\nEmail: ${email}\nPassword: ${password}`);
+    } catch (e) {
+      Alert.alert('Error', e.message);
+    }
   };
 
   const handleShareInvite = async (code) => {
@@ -151,15 +200,28 @@ export default function MyCrewScreen() {
             <RefreshCw color={COLORS.text} size={18} style={{ marginRight: 8 }} />
             <Text style={styles.rotateButtonText}>Rotate Invite Code</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity style={styles.qrButton} onPress={() => setShowQR(true)}>
+            <QrCode color={COLORS.text} size={18} style={{ marginRight: 8 }} />
+            <Text style={styles.qrButtonText}>Show Crew QR Code</Text>
+          </TouchableOpacity>
         </>
       )}
+
+      <QRCodeModal
+        visible={showQR}
+        onClose={() => setShowQR(false)}
+        crewId={crewId}
+        inviteCode={crew?.inviteCode}
+        crewName={crew?.name}
+      />
 
       <AddMemberBottomSheet
         visible={showAddMember}
         onClose={() => setShowAddMember(false)}
         title="Add a Member to Roster"
         dropdownLabel="Assign to Channels"
-        items={[]}
+        items={channels}
         onSubmit={handleAddMember}
       />
     </View>
@@ -271,6 +333,21 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   rotateButtonText: {
+    color: COLORS.text,
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  qrButton: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderColor: COLORS.textMuted,
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingVertical: 12,
+    marginBottom: 20,
+  },
+  qrButtonText: {
     color: COLORS.text,
     fontWeight: 'bold',
     fontSize: 14,

@@ -52,6 +52,14 @@
     },
     "plugins": [
       [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Relay to access your camera for video features",
+          "microphonePermission": "Allow Relay to access your microphone for walkie-talkie communication",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
         "@config-plugins/react-native-webrtc",
         {
           "cameraPermission": "Allow Relay to access your camera for video features",
