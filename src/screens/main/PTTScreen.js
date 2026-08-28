@@ -180,6 +180,7 @@ export default function PTTScreen({ route, navigation }) {
       rippleLoop.current.stop();
       rippleLoop.current = null;
     }
+    rippleAnim.stopAnimation();
     rippleAnim.setValue(0);
     await triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     playRadioBeep();
