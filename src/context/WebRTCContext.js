@@ -1,6 +1,6 @@
 // src/context/WebRTCContext.js
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { Audio } from 'expo-av';
+import { requestRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
 import { Animated } from 'react-native';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import {
@@ -64,14 +64,14 @@ export const WebRTCProvider = ({ children }) => {
         if (!user) return;
         console.log('[WebRTC] initializing client for', user.uid);
 
-        const { status } = await Audio.requestPermissionsAsync();
+        const { status } = await requestRecordingPermissionsAsync();
         setIsAudioPermissionGranted(status === 'granted');
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: true,
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: true,
-          shouldDuckAndroid: false,
-          playThroughEarpieceAndroid: false,
+        await setAudioModeAsync({
+          allowsRecording: true,
+          playsInSilentMode: true,
+          shouldPlayInBackground: true,
+          interruptionMode: 'doNotMix',
+          shouldRouteThroughEarpiece: false,
         });
 
         // Resolve the display name for the GetStream identity.
@@ -301,12 +301,12 @@ export const WebRTCProvider = ({ children }) => {
     const next = !isSpeakerphone;
     setIsSpeakerphone(next);
     try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: !next,
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+        shouldPlayInBackground: true,
+        interruptionMode: 'duckOthers',
+        shouldRouteThroughEarpiece: !next,
       });
     } catch (e) {
       console.warn('[Audio Engine] speakerphone toggle failed:', e.message);

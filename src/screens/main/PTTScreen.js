@@ -1,17 +1,17 @@
 // src/screens/main/PTTScreen.js
-import React, { useRef, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Animated, Vibration } from 'react-native';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, Pressable, Animated, Vibration, Dimensions } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Wifi, Volume2, X, Mic, SlidersHorizontal } from 'lucide-react-native';
+import { Wifi, Volume2, X, Mic, SlidersHorizontal, Smartphone } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { Audio } from 'expo-av';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+import InCallManager from 'react-native-incall-manager';
+import VolumeManager from 'react-native-volume-manager';
 import { COLORS, SIZES } from '../../constants/theme';
 import { useWebRTC } from '../../context/WebRTCContext';
 
-// Short radio beep sound (base64 audio URI)
-const BEEP_AUDIO_URI = 'data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU9vT18AAAAA//8AAAD//wAAAP//AAAA//8AAAD//wAAAP//AAAA//8AAAD//wAAAP//AAAA';
-
-const RING_SIZE = 160;
+const { width } = Dimensions.get('window');
+const RING_SIZE = Math.min(width * 0.55, 200);
 const RING_CONFIGS = [
   { base: 1.0, amp: 0.45, opacity: 0.55 },
   { base: 1.3, amp: 0.65, opacity: 0.4 },
@@ -44,35 +44,90 @@ export default function PTTScreen({ route, navigation }) {
   const joinChannelRef = useRef(joinChannel);
   const leaveChannelRef = useRef(leaveChannel);
   const [volume, setVolume] = useState(0.65);
+  const [isTransmitting, setIsTransmitting] = useState(false);
+  const [handsetMode, setHandsetMode] = useState(false);
+  const volumeSubRef = useRef(null);
+  const lastKnownVolume = useRef(0.65);
 
   joinChannelRef.current = joinChannel;
   leaveChannelRef.current = leaveChannel;
 
   useEffect(() => {
     console.log('[PTT] mount');
-  }, []);
-
-  // Preload radio chirp sound
-  useEffect(() => {
-    let soundObject;
     (async () => {
       try {
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: BEEP_AUDIO_URI },
-          { volume: 0.65 }
-        );
-        soundRef.current = sound;
+        const { volume } = await VolumeManager.getVolume();
+        lastKnownVolume.current = volume;
       } catch (e) {
-        console.log('Audio cue pre-load warning:', e);
+        // Volume manager not ready
       }
     })();
 
     return () => {
-      if (soundRef.current) {
-        soundRef.current.unloadAsync();
+      console.log('[PTT] unmount');
+      deactivateKeepAwake();
+      try {
+        InCallManager.setKeepScreenOn(false);
+        InCallManager.stopProximitySensor();
+      } catch (e) {
+        // cleanup
+      }
+      setHandsetMode(false);
+      if (volumeSubRef.current) {
+        volumeSubRef.current.remove();
+        volumeSubRef.current = null;
       }
     };
   }, []);
+
+  const enableHandsetMode = useCallback(async () => {
+    try {
+      await activateKeepAwakeAsync();
+      InCallManager.setKeepScreenOn(true);
+      InCallManager.startProximitySensor();
+      setHandsetMode(true);
+    } catch (e) {
+      console.warn('[PTT] handset mode setup failed:', e.message);
+    }
+  }, []);
+
+  const disableHandsetMode = useCallback(async () => {
+    try {
+      deactivateKeepAwake();
+      InCallManager.setKeepScreenOn(false);
+      InCallManager.stopProximitySensor();
+      setHandsetMode(false);
+    } catch (e) {
+      console.warn('[PTT] handset mode teardown failed:', e.message);
+    }
+  }, []);
+
+  // Switch the voice client to the selected crew channel once the voice client
+  // is ready. Non-members will be rejected inside joinChannel.
+  useEffect(() => {
+    console.log('[PTT] join effect', { ready, crewId, channelId });
+    if (!ready || !crewId || !channelId) return;
+    console.log('[PTT] joining channel', { crewId, channelId, channelName });
+    joinChannelRef.current(crewId, channelId).catch((e) => {
+      console.warn('[PTT] Could not join channel:', e.message);
+    });
+  }, [ready, crewId, channelId]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('[PTT] screen focused', { ready, crewId, channelId });
+      enableHandsetMode();
+      if (!ready || !crewId || !channelId) return;
+      joinChannelRef.current(crewId, channelId).catch((e) => {
+        console.warn('[PTT] focus join failed:', e.message);
+      });
+      return () => {
+        console.log('[PTT] screen unfocused, leaving channel');
+        leaveChannelRef.current?.();
+        disableHandsetMode();
+      };
+    }, [ready, crewId, channelId, enableHandsetMode, disableHandsetMode])
+  );
 
   const playRadioBeep = async () => {
     try {
@@ -94,7 +149,6 @@ export default function PTTScreen({ route, navigation }) {
 
   const handlePressIn = async () => {
     if (!canTalk || channelBusy) return;
-    // Stop any in-flight ripple loop before starting a new one.
     if (rippleLoop.current) {
       rippleLoop.current.stop();
       rippleLoop.current = null;
@@ -104,6 +158,7 @@ export default function PTTScreen({ route, navigation }) {
     playRadioBeep();
     const started = await startTransmitting();
     if (!started) return;
+    setIsTransmitting(true);
 
     rippleLoop.current = Animated.loop(
       Animated.sequence([
@@ -122,9 +177,6 @@ export default function PTTScreen({ route, navigation }) {
   };
 
   const handlePressOut = async () => {
-    // Reset the ripple immediately, independent of any async backend work
-    // (stopTransmitting writes Firestore presence; if it blocks, the loop
-    // would otherwise keep animating forever).
     if (rippleLoop.current) {
       rippleLoop.current.stop();
       rippleLoop.current = null;
@@ -132,7 +184,8 @@ export default function PTTScreen({ route, navigation }) {
     rippleAnim.setValue(0);
     await triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     playRadioBeep();
-    stopTransmitting(); // fire-and-forget
+    stopTransmitting();
+    setIsTransmitting(false);
   };
 
   const handleVolumeChange = async (newVolume) => {
@@ -146,30 +199,40 @@ export default function PTTScreen({ route, navigation }) {
     }
   };
 
-  // Switch the audio room to the selected crew channel once the voice client
-  // is ready. Non-members will be rejected inside joinChannel.
-  useEffect(() => {
-    console.log('[PTT] join effect', { ready, crewId, channelId });
-    if (!ready || !crewId || !channelId) return;
-    console.log('[PTT] joining channel', { crewId, channelId, channelName });
-    joinChannelRef.current(crewId, channelId).catch((e) => {
-      console.warn('[PTT] Could not join channel:', e.message);
-    });
-  }, [ready, crewId, channelId]);
+  // Map volume button presses to PTT for hands-free operation.
+  const handlePressInRef = useRef(handlePressIn);
+  const handlePressOutRef = useRef(handlePressOut);
 
-  useFocusEffect(
-    React.useCallback(() => {
-      console.log('[PTT] screen focused', { ready, crewId, channelId });
-      if (!ready || !crewId || !channelId) return;
-      joinChannelRef.current(crewId, channelId).catch((e) => {
-        console.warn('[PTT] focus join failed:', e.message);
-      });
-      return () => {
-        console.log('[PTT] screen unfocused, leaving channel');
-        leaveChannelRef.current?.();
-      };
-    }, [ready, crewId, channelId])
-  );
+  useEffect(() => {
+    handlePressInRef.current = handlePressIn;
+    handlePressOutRef.current = handlePressOut;
+  });
+
+  useEffect(() => {
+    if (!activeChannel || !VolumeManager?.addVolumeListener) return;
+
+    const subscription = VolumeManager.addVolumeListener(({ volume }) => {
+      if (!canTalk || channelBusy) return;
+
+      const previous = lastKnownVolume.current;
+      lastKnownVolume.current = volume;
+
+      if (volume > previous + 0.02) {
+        handlePressInRef.current?.();
+      } else if (volume < previous - 0.02) {
+        handlePressOutRef.current?.();
+      }
+    });
+
+    volumeSubRef.current = subscription;
+
+    return () => {
+      if (volumeSubRef.current) {
+        volumeSubRef.current.remove();
+        volumeSubRef.current = null;
+      }
+    };
+  }, [activeChannel, canTalk, channelBusy]);
 
   return (
     <View style={styles.container}>
@@ -192,7 +255,12 @@ export default function PTTScreen({ route, navigation }) {
           </Text>
         </Pressable>
 
-        <Wifi color={COLORS.primary} size={24} />
+        <View style={styles.handsetBadge}>
+          <Smartphone color={handsetMode ? COLORS.primary : COLORS.textMuted} size={20} />
+          <Text style={[styles.handsetText, handsetMode && styles.handsetTextActive]}>
+            {handsetMode ? 'Handset' : 'Phone'}
+          </Text>
+        </View>
       </View>
 
       <Text style={styles.title}>{channelName}</Text>
@@ -240,9 +308,10 @@ export default function PTTScreen({ route, navigation }) {
             styles.micButton,
             isMuted && styles.micButtonActive,
             !canTalk && styles.micButtonDisabled,
+            isTransmitting && styles.micButtonTransmitting,
           ]}
         >
-          <Mic color={COLORS.text} size={60} />
+          <Mic color={COLORS.text} size={RING_SIZE * 0.35} />
         </Pressable>
       </View>
 
@@ -261,11 +330,11 @@ export default function PTTScreen({ route, navigation }) {
         {!canTalk && (
           <Text style={styles.listenOnlyText}>Listen-only · observers can't transmit</Text>
         )}
-        {canTalk && !channelBusy && (
-          <Text style={styles.listenOnlyText}>Ready to transmit</Text>
+        {canTalk && !channelBusy && !isTransmitting && (
+          <Text style={styles.listenOnlyText}>Press volume up or tap to talk</Text>
         )}
-        {canTalk && channelBusy && (
-          <Text style={styles.listenOnlyText}>Wait for channel to clear</Text>
+        {canTalk && isTransmitting && (
+          <Text style={[styles.listenOnlyText, styles.transmittingText]}>Transmitting...</Text>
         )}
       </View>
 
@@ -324,6 +393,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
   },
+  handsetBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.secondary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  handsetText: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  handsetTextActive: {
+    color: COLORS.primary,
+  },
   title: {
     color: COLORS.text,
     fontSize: 22,
@@ -341,6 +427,8 @@ const styles = StyleSheet.create({
   pttStatus: {
     alignItems: 'center',
     marginTop: 12,
+    minHeight: 60,
+    justifyContent: 'center',
   },
   ring: {
     position: 'absolute',
@@ -360,9 +448,18 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
   micButtonActive: {
     backgroundColor: '#D96500',
+  },
+  micButtonTransmitting: {
+    backgroundColor: '#D96500',
+    transform: [{ scale: 1.05 }],
   },
   micButtonDisabled: {
     opacity: 0.4,
@@ -372,6 +469,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     marginTop: 16,
+  },
+  transmittingText: {
+    color: COLORS.primary,
+    fontWeight: 'bold',
+    fontSize: 16,
   },
   speakerText: {
     color: COLORS.primary,

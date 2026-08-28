@@ -1,9 +1,9 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, Share } from 'react-native';
-import { QRCode } from 'react-native-qrcode-svg';
-import { COLORS, SIZES } from '../../constants/theme';
+import QRCode from 'react-native-qrcode-svg';
+import { COLORS, SIZES } from '../constants/theme';
 import { X } from 'lucide-react-native';
-import { buildInviteLink } from '../../lib/invite';
+import { buildInviteLink } from '../lib/invite';
 
 export default function QRCodeModal({ visible, onClose, crewId, inviteCode, crewName }) {
   const inviteLink = crewId && inviteCode ? buildInviteLink(crewId, inviteCode) : '';

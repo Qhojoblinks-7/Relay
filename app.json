@@ -30,7 +30,6 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1C1412"
       },
-      "androidSoftInputMode": "adjustResize",
       "edgeToEdgeEnabled": true,
       "permissions": [
         "android.permission.VIBRATE",
@@ -74,7 +73,6 @@
           }
         }
       ],
-      "expo-av",
       "@stream-io/video-react-native-sdk"
     ],
     "extra": {
