@@ -237,7 +237,7 @@ export default function PTTScreen({ route, navigation }) {
     <View style={styles.container}>
       {/* Top Bar */}
       <View style={styles.topBar}>
-        <Pressable onPress={() => { leaveChannelRef.current?.(); navigation.goBack(); }} style={styles.closeButton}>
+        <Pressable onPress={() => navigation.goBack()} style={styles.closeButton}>
           <X color={COLORS.text} size={28} />
         </Pressable>
 

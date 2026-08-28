@@ -53,6 +53,7 @@ const useWebRTCStore = create((set, get) => ({
   _remoteLevelSubscription: null,
   _micWatchdogRef: null,
   _initPromise: null,
+  _joinPromise: null,
 
   initializeClient: (user, crewId) => {
     if (!user) return () => {};
@@ -107,9 +108,20 @@ const useWebRTCStore = create((set, get) => ({
           token,
         });
 
+        const ensureConnected = async () => {
+          if (streamClient.state.connectedUser?.id === user.uid) return;
+          try {
+            await streamClient.connectUser({ id: user.uid, name }, token);
+          } catch (e) {
+            console.warn('[WebRTC] explicit connectUser skipped:', e?.message);
+          }
+        };
+
+        await ensureConnected();
+
         const waitStart = Date.now();
-        while (!streamClient.state.connectedUser?.id && Date.now() - waitStart < 8000) {
-          await new Promise((r) => setTimeout(r, 150));
+        while (!streamClient.state.connectedUser?.id && Date.now() - waitStart < 5000) {
+          await new Promise((r) => setTimeout(r, 100));
         }
         if (!streamClient.state.connectedUser?.id) {
           console.warn('[WebRTC] client init timed out waiting for user connection');
@@ -142,53 +154,68 @@ const useWebRTCStore = create((set, get) => ({
       if (activeCall) {
         activeCall.leave().catch((e) => console.warn('[WebRTC] cleanup leave failed:', e.message));
       }
+      set({ activeCall: null, activeChannel: null, _joinPromise: null });
     };
   },
 
   joinChannel: async (crewId, channelId) => {
-    const { client, activeChannel } = get();
-    if (!client) {
-      console.warn('[WebRTC] joinChannel skipped: client not ready');
-      return;
-    }
-    if (
-      activeChannel &&
-      activeChannel.crewId === crewId &&
-      activeChannel.channelId === channelId
-    ) {
-      console.log('[WebRTC] joinChannel skipped: already on this channel');
+    const { _joinPromise } = get();
+    if (_joinPromise) {
+      console.log('[WebRTC] joinChannel skipped: join already in progress');
       return;
     }
 
-    console.log('[WebRTC] joinChannel start', { crewId, channelId });
-    const uid = useAuthStore.getState().user?.uid;
-    const role = await getChannelRole(crewId, channelId, uid);
-    console.log('[WebRTC] joinChannel role lookup', { crewId, channelId, uid, role });
-    if (!role) {
-      throw new Error('You are not a member of this channel.');
-    }
+    const promise = (async () => {
+      const { client, activeChannel } = get();
+      if (!client) {
+        console.warn('[WebRTC] joinChannel skipped: client not ready');
+        return;
+      }
+      if (
+        activeChannel &&
+        activeChannel.crewId === crewId &&
+        activeChannel.channelId === channelId
+      ) {
+        console.log('[WebRTC] joinChannel skipped: already on this channel');
+        return;
+      }
 
-    const call = client.call('default', callIdFor(crewId, channelId));
-    console.log('[WebRTC] joinChannel calling call.join', { callId: callIdFor(crewId, channelId) });
-    const joinPromise = call.join({ create: true, ring: false, notify: false });
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('call.join timed out after 15s')), 15000)
-    );
-    await Promise.race([joinPromise, timeoutPromise]);
-    console.log('[WebRTC] joinChannel call.join succeeded');
+      console.log('[WebRTC] joinChannel start', { crewId, channelId });
+      const uid = useAuthStore.getState().user?.uid;
+      const role = await getChannelRole(crewId, channelId, uid);
+      console.log('[WebRTC] joinChannel role lookup', { crewId, channelId, uid, role });
+      if (!role) {
+        throw new Error('You are not a member of this channel.');
+      }
 
-    const guard = (p, ms, label) =>
-      Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error(label)), ms))]);
-    try {
-      await guard(call.microphone.disable(), 5000, 'microphone.disable');
-    } catch (e) {
-      console.warn('[WebRTC] mic disable skipped:', e.message);
-    }
+      const call = client.call('default', callIdFor(crewId, channelId));
+      console.log('[WebRTC] joinChannel calling call.join', { callId: callIdFor(crewId, channelId) });
+      const joinPromise = call.join({ create: true, ring: false, notify: false });
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('call.join timed out after 15s')), 15000)
+      );
+      await Promise.race([joinPromise, timeoutPromise]);
+      console.log('[WebRTC] joinChannel call.join succeeded');
 
-    set({ activeCall: call, activeChannel: { crewId, channelId, role } });
-    console.log('[WebRTC] joined channel', { crewId, channelId, role });
-    await activateKeepAwakeAsync();
-    get().startRemoteLevelTracking();
+      const guard = (p, ms, label) =>
+        Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error(label)), ms))]);
+      try {
+        await guard(call.microphone.disable(), 5000, 'microphone.disable');
+      } catch (e) {
+        console.warn('[WebRTC] mic disable skipped:', e.message);
+      }
+
+      set({ activeCall: call, activeChannel: { crewId, channelId, role } });
+      console.log('[WebRTC] joined channel', { crewId, channelId, role });
+      await activateKeepAwakeAsync();
+      get().startRemoteLevelTracking();
+    })();
+
+    set({ _joinPromise: promise });
+
+    promise.finally(() => {
+      set({ _joinPromise: null });
+    });
   },
 
   startLevelMeter: () => {
@@ -358,21 +385,23 @@ const useWebRTCStore = create((set, get) => ({
       activeChannel: null,
       client: null,
       ready: false,
+      _joinPromise: null,
     });
     deactivateKeepAwake();
   },
 
   leaveChannel: async () => {
     const { activeCall } = get();
+    if (!activeCall) return;
     get().stopMicWatchdog();
     get().stopLevelMeter();
     get().stopRemoteLevelTracking();
     try {
-      await activeCall?.leave();
+      await activeCall.leave();
     } catch (e) {
       console.error('[WebRTC] Error leaving channel:', e);
     }
-    set({ activeCall: null, activeChannel: null });
+    set({ activeCall: null, activeChannel: null, _joinPromise: null });
     deactivateKeepAwake();
   },
 }));
