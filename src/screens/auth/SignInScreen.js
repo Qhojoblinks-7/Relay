@@ -4,12 +4,13 @@ import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, KeyboardAvo
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { COLORS, SIZES } from '../../constants/theme';
 import { globalStyles } from '../../constants/globalStyles';
-import { useAuth } from '../../context/AuthContext';
+import useAuthStore from '../../stores/authStore';
 
 export default function SignInScreen() {
   const navigation = useNavigation();
   const route = useRoute();
-  const { signIn, authError } = useAuth();
+  const signIn = useAuthStore((state) => state.signIn);
+  const authError = useAuthStore((state) => state.authError);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const joinCrewId = route.params?.joinCrewId;

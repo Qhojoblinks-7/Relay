@@ -1,4 +1,3 @@
-import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, Share } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { COLORS, SIZES } from '../constants/theme';

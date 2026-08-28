@@ -3,14 +3,22 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Switch, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { SlidersHorizontal, Volume2, LogOut, Shield, Speaker } from 'lucide-react-native';
 import { COLORS, SIZES } from '../../constants/theme';
-import { useWebRTC } from '../../context/WebRTCContext';
-import { useAuth } from '../../context/AuthContext';
+import useWebRTCStore from '../../stores/webrtcStore';
+import useAuthStore from '../../stores/authStore';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 
 export default function SettingsScreen() {
-  const { isNoiseCancellationActive, toggleNoiseCancellation, isSpeakerphone, toggleSpeakerphone, disconnect } = useWebRTC();
-  const { logOut, profile, crew, crewRole, user } = useAuth();
+  const isNoiseCancellationActive = useWebRTCStore((state) => state.isNoiseCancellationActive);
+  const toggleNoiseCancellation = useWebRTCStore((state) => state.toggleNoiseCancellation);
+  const isSpeakerphone = useWebRTCStore((state) => state.isSpeakerphone);
+  const toggleSpeakerphone = useWebRTCStore((state) => state.toggleSpeakerphone);
+  const disconnect = useWebRTCStore((state) => state.disconnect);
+  const logOut = useAuthStore((state) => state.logOut);
+  const profile = useAuthStore((state) => state.profile);
+  const crew = useAuthStore((state) => state.crew);
+  const crewRole = useAuthStore((state) => state.crewRole);
+  const user = useAuthStore((state) => state.user);
   const [displayName, setDisplayName] = useState(profile?.displayName || '');
   const [highQualityAudio, setHighQualityAudio] = useState(true);
   const [pttBeep, setPttBeep] = useState(true);

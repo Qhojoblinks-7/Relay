@@ -73,6 +73,12 @@
           }
         }
       ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Relay to access your microphone for walkie-talkie communication"
+        }
+      ],
       "@stream-io/video-react-native-sdk"
     ],
     "extra": {

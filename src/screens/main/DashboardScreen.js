@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { Plus } from 'lucide-react-native';
 import { COLORS, SIZES } from '../../constants/theme';
-import { useAuth } from '../../context/AuthContext';
+import useAuthStore from '../../stores/authStore';
 import AddMemberBottomSheet from '../../components/AddMemberBottomSheet';
 import {
   collection,
@@ -17,7 +17,9 @@ import {
 import { db } from '../../lib/firebase';
 
 export default function DashboardScreen({ navigation }) {
-  const { user, crewId, crewRole } = useAuth();
+  const user = useAuthStore((state) => state.user);
+  const crewId = useAuthStore((state) => state.crewId);
+  const crewRole = useAuthStore((state) => state.crewRole);
   const [channels, setChannels] = useState([]);
   const [members, setMembers] = useState([]);
   const [showCreateChannel, setShowCreateChannel] = useState(false);

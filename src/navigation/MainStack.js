@@ -1,5 +1,4 @@
 // src/navigation/MainStack.js
-import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import AppTabs from './AppTabs';
 import PTTScreen from '../screens/main/PTTScreen';

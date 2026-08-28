@@ -1,5 +1,4 @@
 // src/navigation/AppTabs.js
-import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { LayoutGrid, Users, Settings } from 'lucide-react-native';
 

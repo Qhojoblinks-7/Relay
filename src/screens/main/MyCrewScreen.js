@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Share, Alert } from 'react-native';
 import { UserPlus, UserMinus, Circle, RefreshCw, QrCode } from 'lucide-react-native';
 import { COLORS, SIZES } from '../../constants/theme';
-import { useAuth } from '../../context/AuthContext';
+import useAuthStore from '../../stores/authStore';
 import { buildInviteLink, generateInviteCode } from '../../lib/invite';
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc, serverTimestamp, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -23,7 +23,11 @@ function presenceLabel(presence) {
 }
 
 export default function MyCrewScreen() {
-  const { crew, crewId, crewRole, user, signUpOnly } = useAuth();
+  const crew = useAuthStore((state) => state.crew);
+  const crewId = useAuthStore((state) => state.crewId);
+  const crewRole = useAuthStore((state) => state.crewRole);
+  const user = useAuthStore((state) => state.user);
+  const signUpOnly = useAuthStore((state) => state.signUpOnly);
   const [members, setMembers] = useState([]);
   const [channels, setChannels] = useState([]);
   const [showAddMember, setShowAddMember] = useState(false);

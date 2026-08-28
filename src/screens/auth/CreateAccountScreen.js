@@ -12,14 +12,18 @@ import {
   ScrollView,
 } from "react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
-import { useAuth } from "../../context/AuthContext";
+import useAuthStore from "../../stores/authStore";
 import { globalStyles } from "../../constants/globalStyles";
 import { COLORS, SIZES } from "../../constants/theme";
 
 export default function CreateAccountScreen() {
   const navigation = useNavigation();
   const route = useRoute();
-  const { signUp, signUpOnly, joinCrewAsExistingUser, authError, loading: authLoading } = useAuth();
+  const signUp = useAuthStore((state) => state.signUp);
+  const signUpOnly = useAuthStore((state) => state.signUpOnly);
+  const joinCrewAsExistingUser = useAuthStore((state) => state.joinCrewAsExistingUser);
+  const authError = useAuthStore((state) => state.authError);
+  const authLoading = useAuthStore((state) => state.loading);
   const [displayName, setDisplayName] = useState("");
   const [crewName, setCrewName] = useState("");
   const [email, setEmail] = useState("");

@@ -8,7 +8,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import InCallManager from 'react-native-incall-manager';
 import VolumeManager from 'react-native-volume-manager';
 import { COLORS, SIZES } from '../../constants/theme';
-import { useWebRTC } from '../../context/WebRTCContext';
+import useWebRTCStore from '../../stores/webrtcStore';
 
 const { width } = Dimensions.get('window');
 const RING_SIZE = Math.min(width * 0.55, 200);
@@ -21,21 +21,20 @@ const RING_CONFIGS = [
 
 export default function PTTScreen({ route, navigation }) {
   const { crewId, channelId, channelName = 'General' } = route.params || {};
-  const {
-    startTransmitting,
-    stopTransmitting,
-    isMuted,
-    isNoiseCancellationActive,
-    toggleNoiseCancellation,
-    levelValue,
-    ready,
-    canTalk,
-    joinChannel,
-    leaveChannel,
-    activeChannel,
-    channelBusy,
-    currentSpeaker,
-  } = useWebRTC();
+  const startTransmitting = useWebRTCStore((state) => state.startTransmitting);
+  const stopTransmitting = useWebRTCStore((state) => state.stopTransmitting);
+  const isMuted = useWebRTCStore((state) => state.isMuted);
+  const isTransmitting = isPressed;
+  const isNoiseCancellationActive = useWebRTCStore((state) => state.isNoiseCancellationActive);
+  const toggleNoiseCancellation = useWebRTCStore((state) => state.toggleNoiseCancellation);
+  const levelValue = useWebRTCStore((state) => state.levelValue);
+  const ready = useWebRTCStore((state) => state.ready);
+  const joinChannel = useWebRTCStore((state) => state.joinChannel);
+  const leaveChannel = useWebRTCStore((state) => state.leaveChannel);
+  const activeChannel = useWebRTCStore((state) => state.activeChannel);
+  const canTalk = !!activeChannel && activeChannel.role !== 'observer';
+  const channelBusy = useWebRTCStore((state) => state.channelBusy);
+  const currentSpeaker = useWebRTCStore((state) => state.currentSpeaker);
 
   const soundRef = useRef(null);
   const rippleAnim = useRef(new Animated.Value(0)).current;
@@ -44,7 +43,7 @@ export default function PTTScreen({ route, navigation }) {
   const joinChannelRef = useRef(joinChannel);
   const leaveChannelRef = useRef(leaveChannel);
   const [volume, setVolume] = useState(0.65);
-  const [isTransmitting, setIsTransmitting] = useState(false);
+  const [isPressed, setIsPressed] = useState(false);
   const [handsetMode, setHandsetMode] = useState(false);
   const volumeSubRef = useRef(null);
   const lastKnownVolume = useRef(0.65);
@@ -114,7 +113,7 @@ export default function PTTScreen({ route, navigation }) {
   }, [ready, crewId, channelId]);
 
   useFocusEffect(
-    React.useCallback(() => {
+    useCallback(() => {
       console.log('[PTT] screen focused', { ready, crewId, channelId });
       enableHandsetMode();
       if (!ready || !crewId || !channelId) return;
@@ -158,7 +157,7 @@ export default function PTTScreen({ route, navigation }) {
     playRadioBeep();
     const started = await startTransmitting();
     if (!started) return;
-    setIsTransmitting(true);
+    setIsPressed(true);
 
     rippleLoop.current = Animated.loop(
       Animated.sequence([
@@ -185,7 +184,7 @@ export default function PTTScreen({ route, navigation }) {
     await triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     playRadioBeep();
     stopTransmitting();
-    setIsTransmitting(false);
+    setIsPressed(false);
   };
 
   const handleVolumeChange = async (newVolume) => {

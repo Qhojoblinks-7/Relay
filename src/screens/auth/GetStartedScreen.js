@@ -1,5 +1,4 @@
 // src/screens/auth/GetStartedScreen.js
-import React from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { globalStyles } from "../../constants/globalStyles";

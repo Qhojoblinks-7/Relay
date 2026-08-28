@@ -13,14 +13,16 @@ import {
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { QrCode } from "lucide-react-native";
-import { useAuth } from "../../context/AuthContext";
+import useAuthStore from "../../stores/authStore";
 import { parseInvite } from "../../lib/invite";
 import QRScannerScreen from "../../components/QRScannerScreen";
 import { globalStyles } from "../../constants/globalStyles";
 import { COLORS, SIZES } from "../../constants/theme";
 
 export default function JoinCrewScreen() {
-  const { joinCrewAsExistingUser, user, authError } = useAuth();
+  const joinCrewAsExistingUser = useAuthStore((state) => state.joinCrewAsExistingUser);
+  const user = useAuthStore((state) => state.user);
+  const authError = useAuthStore((state) => state.authError);
   const route = useRoute();
   const navigation = useNavigation();
   const [link, setLink] = useState(route.params?.prefillLink || route.params?.joinLink || "");
