@@ -80,25 +80,54 @@ export default function PTTScreen({ route, navigation }) {
   }, []);
 
   const enableHandsetMode = useCallback(async () => {
+    console.log('[PTT] enableHandsetMode start');
     try {
       await activateKeepAwakeAsync();
-      InCallManager.setKeepScreenOn(true);
-      InCallManager.startProximitySensor();
-      setHandsetMode(true);
+      console.log('[PTT] keep awake activated');
     } catch (e) {
-      console.warn('[PTT] handset mode setup failed:', e.message);
+      console.warn('[PTT] keep awake failed:', e.message);
     }
+    try {
+      InCallManager.setKeepScreenOn(true);
+      console.log('[PTT] keep screen on set');
+    } catch (e) {
+      console.warn('[PTT] keep screen on failed:', e.message);
+    }
+    try {
+      if (typeof InCallManager.startProximitySensor === 'function') {
+        InCallManager.startProximitySensor();
+        console.log('[PTT] proximity sensor started');
+      } else {
+        console.warn('[PTT] startProximitySensor not available');
+      }
+    } catch (e) {
+      console.warn('[PTT] proximity sensor failed:', e.message);
+    }
+    setHandsetMode(true);
+    console.log('[PTT] handsetMode set to true');
   }, []);
 
   const disableHandsetMode = useCallback(async () => {
+    console.log('[PTT] disableHandsetMode start');
     try {
       deactivateKeepAwake();
-      InCallManager.setKeepScreenOn(false);
-      InCallManager.stopProximitySensor();
-      setHandsetMode(false);
     } catch (e) {
-      console.warn('[PTT] handset mode teardown failed:', e.message);
+      console.warn('[PTT] deactivate keep awake failed:', e.message);
     }
+    try {
+      InCallManager.setKeepScreenOn(false);
+    } catch (e) {
+      console.warn('[PTT] keep screen off failed:', e.message);
+    }
+    try {
+      if (typeof InCallManager.stopProximitySensor === 'function') {
+        InCallManager.stopProximitySensor();
+      }
+    } catch (e) {
+      console.warn('[PTT] stop proximity sensor failed:', e.message);
+    }
+    setHandsetMode(false);
+    console.log('[PTT] handsetMode set to false');
   }, []);
 
   // Switch the voice client to the selected crew channel once the voice client
@@ -110,22 +139,21 @@ export default function PTTScreen({ route, navigation }) {
     joinChannelRef.current(crewId, channelId).catch((e) => {
       console.warn('[PTT] Could not join channel:', e.message);
     });
+    return () => {
+      console.log('[PTT] join cleanup, leaving channel');
+      leaveChannelRef.current?.();
+    };
   }, [ready, crewId, channelId]);
 
   useFocusEffect(
     useCallback(() => {
-      console.log('[PTT] screen focused', { ready, crewId, channelId });
+      console.log('[PTT] screen focused');
       enableHandsetMode();
-      if (!ready || !crewId || !channelId) return;
-      joinChannelRef.current(crewId, channelId).catch((e) => {
-        console.warn('[PTT] focus join failed:', e.message);
-      });
       return () => {
-        console.log('[PTT] screen unfocused, leaving channel');
-        leaveChannelRef.current?.();
+        console.log('[PTT] screen unfocused');
         disableHandsetMode();
       };
-    }, [ready, crewId, channelId, enableHandsetMode, disableHandsetMode])
+    }, [enableHandsetMode, disableHandsetMode])
   );
 
   const playRadioBeep = async () => {
@@ -255,7 +283,7 @@ export default function PTTScreen({ route, navigation }) {
           </Text>
         </Pressable>
 
-        <View style={styles.handsetBadge}>
+        <View style={[styles.handsetBadge, handsetMode && styles.handsetBadgeActive]}>
           <Smartphone color={handsetMode ? COLORS.primary : COLORS.textMuted} size={20} />
           <Text style={[styles.handsetText, handsetMode && styles.handsetTextActive]}>
             {handsetMode ? 'Handset' : 'Phone'}
@@ -397,10 +425,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: COLORS.secondary,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
+  },
+  handsetBadgeActive: {
+    backgroundColor: 'rgba(0, 255, 136, 0.15)',
   },
   handsetText: {
     color: COLORS.textMuted,

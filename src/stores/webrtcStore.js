@@ -52,30 +52,32 @@ const useWebRTCStore = create((set, get) => ({
   _levelSubscription: null,
   _remoteLevelSubscription: null,
   _micWatchdogRef: null,
-  _initPromise: null,
   _joinPromise: null,
 
   initializeClient: (user, crewId) => {
     if (!user) return () => {};
 
-    const existing = get()._initPromise;
-    if (existing) {
-      return () => {};
+    const existingClient = get().client;
+    if (existingClient && existingClient.state.connectedUser?.id === user.uid) {
+      console.log('[WebRTC] client already connected for', user.uid);
+      set({ ready: true });
+      return () => {
+        deactivateKeepAwake();
+        get().stopMicWatchdog();
+        get().stopLevelMeter();
+        get().stopRemoteLevelTracking();
+        const { activeCall } = get();
+        if (activeCall) {
+          activeCall.leave().catch((e) => console.warn('[WebRTC] cleanup leave failed:', e.message));
+        }
+        set({ activeCall: null, activeChannel: null, _joinPromise: null });
+      };
     }
 
-    let cancelled = false;
+    console.log('[WebRTC] initializing client for', user.uid);
 
-    const promise = (async () => {
+    (async () => {
       try {
-        const existingClient = get().client;
-        if (existingClient && existingClient.state.connectedUser?.id === user.uid) {
-          console.log('[WebRTC] client already connected for', user.uid);
-          set({ ready: true });
-          return;
-        }
-
-        console.log('[WebRTC] initializing client for', user.uid);
-
         if (hasExpoAudio) {
           const { status } = await requestRecordingPermissionsAsync();
           set({ isAudioPermissionGranted: status === 'granted' });
@@ -84,7 +86,7 @@ const useWebRTCStore = create((set, get) => ({
             playsInSilentMode: true,
             shouldPlayInBackground: true,
             interruptionMode: 'doNotMix',
-            shouldRouteThroughEarpiece: false,
+            shouldRouteThroughEarpiece: true,
           });
         }
 
@@ -107,45 +109,16 @@ const useWebRTCStore = create((set, get) => ({
           user: { id: user.uid, name },
           token,
         });
-
-        const ensureConnected = async () => {
-          if (streamClient.state.connectedUser?.id === user.uid) return;
-          try {
-            await streamClient.connectUser({ id: user.uid, name }, token);
-          } catch (e) {
-            console.warn('[WebRTC] explicit connectUser skipped:', e?.message);
-          }
-        };
-
-        await ensureConnected();
-
-        const waitStart = Date.now();
-        while (!streamClient.state.connectedUser?.id && Date.now() - waitStart < 5000) {
-          await new Promise((r) => setTimeout(r, 100));
-        }
-        if (!streamClient.state.connectedUser?.id) {
-          console.warn('[WebRTC] client init timed out waiting for user connection');
-        }
-
         console.log('[WebRTC] client created and user connected');
 
-        if (cancelled) {
-          streamClient.disconnectUser();
-          return;
-        }
         set({ client: streamClient, ready: true });
         console.log('[WebRTC] ready set to true');
       } catch (err) {
         console.error('[WebRTC] client init failed:', err);
-      } finally {
-        set({ _initPromise: null });
       }
     })();
 
-    set({ _initPromise: promise });
-
     return () => {
-      cancelled = true;
       deactivateKeepAwake();
       get().stopMicWatchdog();
       get().stopLevelMeter();
