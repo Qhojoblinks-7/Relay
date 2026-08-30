@@ -15,11 +15,9 @@ export default function App() {
   return (
     <AuthProvider>
       <WebRTCProvider>
-        {/* Forces the phone's top status bar (battery, time) to be white on your dark background */}
         <StatusBar style="light" backgroundColor={COLORS.background} />
 
         <NavigationContainer>
-          {/* Switches between the auth flow and the main app based on auth state */}
           <RootNavigator />
         </NavigationContainer>
       </WebRTCProvider>

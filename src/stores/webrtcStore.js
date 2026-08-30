@@ -5,6 +5,7 @@ import {
   StreamVideoClient,
   StreamVideo,
 } from '@stream-io/video-react-native-sdk';
+import { NoiseCancellation } from '@stream-io/noise-cancellation-react-native';
 import Constants from 'expo-constants';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -52,7 +53,9 @@ const useWebRTCStore = create((set, get) => ({
   _levelSubscription: null,
   _remoteLevelSubscription: null,
   _micWatchdogRef: null,
+  _initPromise: null,
   _joinPromise: null,
+  _ncInstance: null,
 
   initializeClient: (user, crewId) => {
     if (!user) return () => {};
@@ -288,9 +291,31 @@ const useWebRTCStore = create((set, get) => ({
     }
   },
 
-  toggleNoiseCancellation: () => {
-    set({ isNoiseCancellationActive: !get().isNoiseCancellationActive });
-    console.log(`[Audio Engine] Noise Cancellation toggled: ${!get().isNoiseCancellationActive}`);
+  toggleNoiseCancellation: async () => {
+    const { activeCall, isNoiseCancellationActive } = get();
+    const next = !isNoiseCancellationActive;
+
+    if (!activeCall) {
+      set({ isNoiseCancellationActive: next });
+      return;
+    }
+
+    let instance = get()._ncInstance;
+    if (!instance) {
+      instance = new NoiseCancellation();
+      set({ _ncInstance: instance });
+    }
+
+    try {
+      if (next) {
+        await activeCall.microphone.enableNoiseCancellation(instance);
+      } else {
+        await activeCall.microphone.disableNoiseCancellation();
+      }
+      set({ isNoiseCancellationActive: next });
+    } catch (e) {
+      console.warn('[WebRTC] Noise cancellation toggle failed:', e.message);
+    }
   },
 
   startMicWatchdog: () => {

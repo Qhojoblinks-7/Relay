@@ -4,13 +4,13 @@
     "slug": "Relay",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/icon.svg",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#1C1412",
     "scheme": "relay",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/icon.svg",
       "resizeMode": "contain",
       "backgroundColor": "#1C1412"
     },
@@ -27,7 +27,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/icon.svg",
         "backgroundColor": "#1C1412"
       },
       "edgeToEdgeEnabled": true,
@@ -47,7 +47,7 @@
       "package": "com.immanuel_e.Relay"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/icon.svg"
     },
     "plugins": [
       [
