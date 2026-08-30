@@ -44,6 +44,7 @@ export default function PTTScreen({ route, navigation }) {
   const leaveChannelRef = useRef(leaveChannel);
   const [volume, setVolume] = useState(0.65);
   const [isPressed, setIsPressed] = useState(false);
+  const isPressedRef = useRef(false);
   const [handsetMode, setHandsetMode] = useState(false);
   const volumeSubRef = useRef(null);
   const lastKnownVolume = useRef(0.65);
@@ -176,6 +177,7 @@ export default function PTTScreen({ route, navigation }) {
 
   const handlePressIn = async () => {
     if (!canTalk || channelBusy) return;
+    isPressedRef.current = true;
     if (rippleLoop.current) {
       rippleLoop.current.stop();
       rippleLoop.current = null;
@@ -184,7 +186,10 @@ export default function PTTScreen({ route, navigation }) {
     await triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
     playRadioBeep();
     const started = await startTransmitting();
-    if (!started) return;
+    if (!started || !isPressedRef.current) {
+      isPressedRef.current = false;
+      return;
+    }
     setIsPressed(true);
 
     rippleLoop.current = Animated.loop(
@@ -204,6 +209,7 @@ export default function PTTScreen({ route, navigation }) {
   };
 
   const handlePressOut = async () => {
+    isPressedRef.current = false;
     if (rippleLoop.current) {
       rippleLoop.current.stop();
       rippleLoop.current = null;
