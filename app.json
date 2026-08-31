@@ -4,13 +4,13 @@
     "slug": "Relay",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.svg",
+    "icon": "./src/assets/icon-1024.png",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#1C1412",
     "scheme": "relay",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/icon.svg",
+      "image": "./src/assets/icon-1024.png",
       "resizeMode": "contain",
       "backgroundColor": "#1C1412"
     },
@@ -27,7 +27,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.svg",
+        "foregroundImage": "./src/assets/icon-1024.png",
         "backgroundColor": "#1C1412"
       },
       "edgeToEdgeEnabled": true,
@@ -47,9 +47,18 @@
       "package": "com.immanuel_e.Relay"
     },
     "web": {
-      "favicon": "./assets/icon.svg"
+      "favicon": "./src/assets/icon-1024.png"
     },
     "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#1C1412",
+          "image": "./src/assets/icon-1024.png",
+          "imageWidth": 200,
+          "resizeMode": "contain"
+        }
+      ],
       [
         "expo-camera",
         {
@@ -79,7 +88,8 @@
           "microphonePermission": "Allow Relay to access your microphone for walkie-talkie communication"
         }
       ],
-      "@stream-io/video-react-native-sdk"
+      "@stream-io/video-react-native-sdk",
+      "expo-asset"
     ],
     "extra": {
       "eas": {

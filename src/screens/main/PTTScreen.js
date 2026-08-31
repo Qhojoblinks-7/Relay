@@ -4,7 +4,6 @@ import { View, Text, StyleSheet, Pressable, Animated, Vibration, Dimensions } fr
 import { useFocusEffect } from '@react-navigation/native';
 import { Wifi, Volume2, X, Mic, SlidersHorizontal, Smartphone } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import InCallManager from 'react-native-incall-manager';
 import VolumeManager from 'react-native-volume-manager';
 import { COLORS, SIZES } from '../../constants/theme';
@@ -65,7 +64,6 @@ export default function PTTScreen({ route, navigation }) {
 
     return () => {
       console.log('[PTT] unmount');
-      deactivateKeepAwake();
       try {
         InCallManager.setKeepScreenOn(false);
         InCallManager.stopProximitySensor();
@@ -82,12 +80,6 @@ export default function PTTScreen({ route, navigation }) {
 
   const enableHandsetMode = useCallback(async () => {
     console.log('[PTT] enableHandsetMode start');
-    try {
-      await activateKeepAwakeAsync();
-      console.log('[PTT] keep awake activated');
-    } catch (e) {
-      console.warn('[PTT] keep awake failed:', e.message);
-    }
     try {
       InCallManager.setKeepScreenOn(true);
       console.log('[PTT] keep screen on set');
@@ -110,11 +102,6 @@ export default function PTTScreen({ route, navigation }) {
 
   const disableHandsetMode = useCallback(async () => {
     console.log('[PTT] disableHandsetMode start');
-    try {
-      deactivateKeepAwake();
-    } catch (e) {
-      console.warn('[PTT] deactivate keep awake failed:', e.message);
-    }
     try {
       InCallManager.setKeepScreenOn(false);
     } catch (e) {
