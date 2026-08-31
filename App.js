@@ -10,6 +10,10 @@ import { COLORS } from "./src/constants/theme";
 import { setupBackgroundFcm } from "./src/lib/notifications";
 
 SplashScreen.preventAutoHideAsync();
+SplashScreen.setOptions({
+  duration: 500,
+  fade: true,
+});
 
 setupBackgroundFcm();
 
@@ -32,7 +36,7 @@ export default function App() {
         <StatusBar style="light" backgroundColor={COLORS.background} />
 
         <NavigationContainer>
-          <RootNavigator onReady={onReady} />
+          <RootNavigator onReady={onReady} onGetStarted={() => {}} />
         </NavigationContainer>
       </WebRTCProvider>
     </AuthProvider>

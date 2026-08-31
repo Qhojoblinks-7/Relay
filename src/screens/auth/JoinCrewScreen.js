@@ -18,6 +18,8 @@ import { parseInvite } from "../../lib/invite";
 import QRScannerScreen from "../../components/QRScannerScreen";
 import { globalStyles } from "../../constants/globalStyles";
 import { COLORS, SIZES } from "../../constants/theme";
+import AuthHeader from "../../components/AuthHeader";
+import AuthBackground from "../../components/AuthBackground";
 
 export default function JoinCrewScreen() {
   const joinCrewAsExistingUser = useAuthStore((state) => state.joinCrewAsExistingUser);
@@ -71,9 +73,8 @@ export default function JoinCrewScreen() {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.logoText}>
-            Rel<Text style={styles.logoHighlight}>ay</Text>
-          </Text>
+          <AuthBackground />
+          <AuthHeader />
           <View style={styles.formContainer}>
             <TextInput
               style={globalStyles.input}
@@ -113,9 +114,7 @@ export default function JoinCrewScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.logoText}>
-          Rel<Text style={styles.logoHighlight}>ay</Text>
-        </Text>
+        <AuthBackground />
 
         <View style={styles.formContainer}>
           <Text style={styles.detectedText}>
@@ -184,15 +183,9 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     backgroundColor: COLORS.background,
     paddingHorizontal: SIZES.padding,
-    paddingTop: 60,
+    paddingTop: 80,
     paddingBottom: 40,
-    justifyContent: 'center',
-  },
-  logoText: {
-    color: "#FFFFFF",
-    fontSize: 48,
-    fontWeight: "bold",
-    marginBottom: 40,
+    alignItems: "center",
   },
   logoHighlight: {
     color: COLORS.primary,

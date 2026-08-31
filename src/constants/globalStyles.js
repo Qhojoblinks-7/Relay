@@ -8,7 +8,6 @@ export const globalStyles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
     padding: SIZES.padding,
-    justifyContent: "center",
     alignItems: "center",
   },
 
@@ -32,12 +31,12 @@ export const globalStyles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 32,
     borderRadius: SIZES.radius,
-    width: "100%",
+    width: "85%",
     alignItems: "center",
     marginBottom: SIZES.medium,
   },
   primaryButtonText: {
-    color: COLORS.background, // Black text on the orange button looks sharp
+    color: COLORS.text,
     fontSize: SIZES.medium,
     fontWeight: "bold",
   },
@@ -47,7 +46,7 @@ export const globalStyles = StyleSheet.create({
     borderRadius: SIZES.radius,
     borderWidth: 2,
     borderColor: COLORS.secondary,
-    width: "100%",
+    width: "85%",
     alignItems: "center",
   },
   secondaryButtonText: {

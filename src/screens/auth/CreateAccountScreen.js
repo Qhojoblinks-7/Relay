@@ -1,5 +1,5 @@
 // src/screens/auth/CreateAccountScreen.js
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -15,6 +15,8 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import useAuthStore from "../../stores/authStore";
 import { globalStyles } from "../../constants/globalStyles";
 import { COLORS, SIZES } from "../../constants/theme";
+import AuthHeader from "../../components/AuthHeader";
+import AuthBackground from "../../components/AuthBackground";
 
 export default function CreateAccountScreen() {
   const navigation = useNavigation();
@@ -74,10 +76,8 @@ export default function CreateAccountScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.logoText}>
-          Rel<Text style={styles.logoHighlight}>ay</Text>
-        </Text>
-
+        <AuthBackground />
+        <AuthHeader />
         <View style={styles.formContainer}>
           <TextInput
             style={globalStyles.input}
@@ -144,15 +144,9 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     backgroundColor: COLORS.background,
     paddingHorizontal: SIZES.padding,
-    paddingTop: 60,
+    paddingTop: 80,
     paddingBottom: 40,
-    justifyContent: 'center',
-  },
-  logoText: {
-    color: "#FFFFFF",
-    fontSize: 48,
-    fontWeight: "bold",
-    marginBottom: 40,
+    alignItems: "center",
   },
   logoHighlight: {
     color: COLORS.primary,

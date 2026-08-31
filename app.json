@@ -4,13 +4,12 @@
     "slug": "Relay",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./src/assets/icon-1024.png",
+    "icon": "./src/assets/logo.png",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#1C1412",
     "scheme": "relay",
     "newArchEnabled": true,
     "splash": {
-      "image": "./src/assets/icon-1024.png",
       "resizeMode": "contain",
       "backgroundColor": "#1C1412"
     },
@@ -27,7 +26,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./src/assets/icon-1024.png",
+        "foregroundImage": "./src/assets/logo.png",
         "backgroundColor": "#1C1412"
       },
       "edgeToEdgeEnabled": true,
@@ -47,15 +46,15 @@
       "package": "com.immanuel_e.Relay"
     },
     "web": {
-      "favicon": "./src/assets/icon-1024.png"
+      "favicon": "./src/assets/logo.png"
     },
     "plugins": [
       [
         "expo-splash-screen",
         {
           "backgroundColor": "#1C1412",
-          "image": "./src/assets/icon-1024.png",
-          "imageWidth": 200,
+          "image": "./src/assets/logo.png",
+          "imageWidth": 300,
           "resizeMode": "contain"
         }
       ],
@@ -78,7 +77,8 @@
         "expo-build-properties",
         {
           "android": {
-            "minSdkVersion": 24
+            "minSdkVersion": 24,
+            "jsEngine": "hermes"
           }
         }
       ],

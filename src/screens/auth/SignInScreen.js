@@ -5,6 +5,8 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { COLORS, SIZES } from '../../constants/theme';
 import { globalStyles } from '../../constants/globalStyles';
 import useAuthStore from '../../stores/authStore';
+import AuthHeader from '../../components/AuthHeader';
+import AuthBackground from '../../components/AuthBackground';
 
 export default function SignInScreen() {
   const navigation = useNavigation();
@@ -42,6 +44,8 @@ export default function SignInScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
+        <AuthBackground />
+        <AuthHeader />
         <Text style={globalStyles.title}>Welcome Back</Text>
 
         <TextInput
@@ -84,9 +88,9 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     backgroundColor: COLORS.background,
     paddingHorizontal: SIZES.padding,
-    paddingTop: 60,
+    paddingTop: 80,
     paddingBottom: 40,
-    justifyContent: 'center',
+    alignItems: "center",
   },
   errorText: {
     color: '#FF4D4D',
