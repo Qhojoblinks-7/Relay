@@ -18,7 +18,10 @@ export default function RootNavigator({ onReady, onGetStarted }) {
       readyRef.current = true;
       onReady();
     }
-  }, [loading, onReady]);
+    if (!loading && user && !splashDismissed) {
+      setSplashDismissed(true);
+    }
+  }, [loading, onReady, user, splashDismissed]);
 
   if (loading || !splashDismissed) {
     return (

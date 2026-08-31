@@ -130,6 +130,9 @@ export default function JoinCrewScreen() {
                 value={displayName}
                 onChangeText={setDisplayName}
                 autoCapitalize="words"
+                autoComplete="name"
+                textContentType="name"
+                importantForAutofill="yes"
               />
               <TouchableOpacity
                 style={[globalStyles.primaryButton, loading && styles.disabled]}

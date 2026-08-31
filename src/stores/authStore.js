@@ -22,6 +22,48 @@ import { generateInviteCode } from '../lib/invite';
 import { setPresence } from '../lib/presence';
 import { registerFcmToken, setupFcmListeners } from '../lib/notifications';
 
+const FRIENDLY_ERRORS = {
+  'auth/email-already-in-use': 'This email is already registered. Try signing in instead.',
+  'auth/invalid-email': 'Please enter a valid email address.',
+  'auth/operation-not-allowed': 'Email and password sign-in is currently disabled.',
+  'auth/weak-password': 'Password should be at least 6 characters.',
+  'auth/user-disabled': 'This account has been disabled.',
+  'auth/user-not-found': 'No account found with this email.',
+  'auth/wrong-password': 'Incorrect password. Please try again.',
+  'auth/invalid-credential': 'Invalid email or password.',
+  'auth/too-many-requests': 'Too many attempts. Please try again later.',
+  'auth/network-request-failed': 'Network error. Please check your internet connection.',
+  'auth/popup-closed-by-user': 'Sign-in was cancelled. Please try again.',
+  'auth/cancelled-popup-request': 'Sign-in was cancelled. Please try again.',
+  'auth/account-exists-with-different-credential': 'An account already exists with this email using a different sign-in method.',
+  'auth/provider-already-linked': 'This account is already linked to another provider.',
+  'auth/credential-already-in-use': 'This credential is already associated with a different account.',
+  'auth/requires-recent-login': 'Please sign in again to complete this action.',
+  'auth/expired-action-code': 'This action link has expired. Please request a new one.',
+  'auth/invalid-action-code': 'This action link is invalid or has already been used.',
+  'auth/missing-android-pkg-name': 'Missing Android package name.',
+  'auth/missing-continue-uri': 'Missing continue URL.',
+  'auth/missing-ios-bundle-id': 'Missing iOS bundle ID.',
+  'auth/invalid-continue-uri': 'Invalid continue URL.',
+  'auth/unauthorized-continue-uri': 'Unauthorized continue URL.',
+  'auth/code-expired': 'The action code has expired.',
+  'auth/invalid-message-payload': 'Invalid email action payload.',
+  'auth/email-change-needs-verification': 'Please verify your email before changing it.',
+  'auth/internal-error': 'An internal error occurred. Please try again later.',
+  'auth/invalid-api-key': 'Invalid API key. Please contact support.',
+  'auth/app-not-authorized': 'This app is not authorized to use Firebase Auth.',
+  'auth/keychain-error': 'A keychain error occurred. Please try again.',
+  'auth/tenant-id-mismatch': 'Tenant ID mismatch. Please contact support.',
+};
+
+const toFriendlyError = (error) => {
+  if (!error || !error.message) return 'Something went wrong. Please try again.';
+  const code = error.code || error.message;
+  if (FRIENDLY_ERRORS[code]) return FRIENDLY_ERRORS[code];
+  if (error.message && FRIENDLY_ERRORS[error.message]) return FRIENDLY_ERRORS[error.message];
+  return 'Something went wrong. Please try again.';
+};
+
 const useAuthStore = create((set, get) => ({
   user: null,
   profile: null,
@@ -101,7 +143,7 @@ const useAuthStore = create((set, get) => ({
       await get().loadUserProfile(uid);
       return { uid, crewId };
     } catch (err) {
-      setAuthError(err.message);
+      setAuthError(toFriendlyError(err));
       throw err;
     }
   },
@@ -122,7 +164,7 @@ const useAuthStore = create((set, get) => ({
       await get().loadUserProfile(uid);
       return { uid };
     } catch (err) {
-      setAuthError(err.message);
+      setAuthError(toFriendlyError(err));
       throw err;
     }
   },
@@ -166,7 +208,7 @@ const useAuthStore = create((set, get) => ({
       await get().loadUserProfile(uid);
       return { uid, crewId };
     } catch (err) {
-      setAuthError(err.message);
+      setAuthError(toFriendlyError(err));
       throw err;
     }
   },
@@ -211,7 +253,7 @@ const useAuthStore = create((set, get) => ({
       await get().loadUserProfile(uid);
       return { uid, crewId };
     } catch (err) {
-      setAuthError(err.message);
+      setAuthError(toFriendlyError(err));
       throw err;
     }
   },
@@ -222,7 +264,7 @@ const useAuthStore = create((set, get) => ({
     try {
       await signInWithEmailAndPassword(auth, email, password);
     } catch (err) {
-      setAuthError(err.message);
+      setAuthError(toFriendlyError(err));
       throw err;
     }
   },
@@ -234,7 +276,7 @@ const useAuthStore = create((set, get) => ({
       if (crewId && user) await setPresence(crewId, user.uid, 'offline');
       await signOut(auth);
     } catch (err) {
-      setAuthError(err.message);
+      setAuthError(toFriendlyError(err));
       throw err;
     }
   },

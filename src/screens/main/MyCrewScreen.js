@@ -9,6 +9,7 @@ import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc, serverTimest
 import { db } from '../../lib/firebase';
 import AddMemberBottomSheet from '../../components/AddMemberBottomSheet';
 import QRCodeModal from '../../components/QRCodeModal';
+import { SkeletonList } from '../../components/Skeleton';
 
 function presenceColor(presence) {
   if (presence === 'busy') return COLORS.primary;
@@ -155,33 +156,37 @@ export default function MyCrewScreen() {
 
       {/* Roster Container */}
       <ScrollView contentContainerStyle={styles.scrollList}>
-        {members.map((member) => (
-          <View key={member.id} style={styles.memberCard}>
-            <View style={styles.memberAvatar}>
-              <Text style={styles.avatarText}>
-                {(member.displayName || '?').charAt(0)}
-              </Text>
+        {members.length === 0 && crewId ? (
+          <SkeletonList count={5} type="member" />
+        ) : (
+          members.map((member) => (
+            <View key={member.id} style={styles.memberCard}>
+              <View style={styles.memberAvatar}>
+                <Text style={styles.avatarText}>
+                  {(member.displayName || '?').charAt(0)}
+                </Text>
+              </View>
+
+              <View style={styles.memberDetails}>
+                <Text style={styles.memberName}>{member.displayName}</Text>
+                <Text style={styles.memberRole}>
+                  {member.crewRole} · {presenceLabel(member.presence)}
+                </Text>
+              </View>
+
+              <Circle size={10} color={presenceColor(member.presence)} fill={presenceColor(member.presence)} />
+
+              {isAdmin && member.id !== user?.uid && (
+                <TouchableOpacity
+                  style={styles.removeButton}
+                  onPress={() => handleRemoveMember(member)}
+                >
+                  <UserMinus color="#FF4D4D" size={18} />
+                </TouchableOpacity>
+              )}
             </View>
-
-            <View style={styles.memberDetails}>
-              <Text style={styles.memberName}>{member.displayName}</Text>
-              <Text style={styles.memberRole}>
-                {member.crewRole} · {presenceLabel(member.presence)}
-              </Text>
-            </View>
-
-            <Circle size={10} color={presenceColor(member.presence)} fill={presenceColor(member.presence)} />
-
-            {isAdmin && member.id !== user?.uid && (
-              <TouchableOpacity
-                style={styles.removeButton}
-                onPress={() => handleRemoveMember(member)}
-              >
-                <UserMinus color="#FF4D4D" size={18} />
-              </TouchableOpacity>
-            )}
-          </View>
-        ))}
+          ))
+        )}
       </ScrollView>
 
       {/* Admin-only actions */}

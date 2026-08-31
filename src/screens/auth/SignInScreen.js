@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { Eye, EyeOff } from 'lucide-react-native';
 import { COLORS, SIZES } from '../../constants/theme';
 import { globalStyles } from '../../constants/globalStyles';
 import useAuthStore from '../../stores/authStore';
@@ -15,6 +16,7 @@ export default function SignInScreen() {
   const authError = useAuthStore((state) => state.authError);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const joinCrewId = route.params?.joinCrewId;
   const joinCode = route.params?.joinCode;
 
@@ -26,8 +28,6 @@ export default function SignInScreen() {
           index: 0,
           routes: [{ name: 'JoinCrew', params: { joinCrewId, joinCode } }],
         });
-      } else {
-        navigation.goBack();
       }
     } catch (err) {
       Alert.alert('Sign In Failed', err.message || 'Please check your credentials.');
@@ -58,24 +58,31 @@ export default function SignInScreen() {
           keyboardType="email-address"
           autoComplete="email"
           textContentType="emailAddress"
+          importantForAutofill="yes"
         />
-        <TextInput
-          style={globalStyles.input}
-          placeholder="Password"
-          placeholderTextColor={COLORS.textMuted}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          autoComplete="current-password"
-          textContentType="password"
-        />
+        <View style={styles.passwordWrapper}>
+          <TextInput
+            style={[globalStyles.input, styles.passwordInput]}
+            placeholder="Password"
+            placeholderTextColor={COLORS.textMuted}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry={!showPassword}
+            autoComplete="password"
+            textContentType="password"
+            importantForAutofill="yes"
+          />
+          <TouchableOpacity style={styles.eyeButton} onPress={() => setShowPassword(!showPassword)}>
+            {showPassword ? <EyeOff size={20} color={COLORS.textMuted} /> : <Eye size={20} color={COLORS.textMuted} />}
+          </TouchableOpacity>
+        </View>
         {authError ? <Text style={styles.errorText}>{authError}</Text> : null}
 
         <TouchableOpacity style={globalStyles.primaryButton} onPress={handleSignIn}>
           <Text style={globalStyles.primaryButtonText}>Sign In</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity onPress={() => navigation.navigate('GetStarted')}>
           <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -100,6 +107,23 @@ const styles = StyleSheet.create({
   backText: {
     color: COLORS.textMuted,
     marginTop: 16,
-    textAlign: 'center',
+    textAlign: "center",
+  },
+  passwordWrapper: {
+    position: "relative",
+    width: "100%",
+    marginBottom: SIZES.medium,
+  },
+  passwordInput: {
+    paddingRight: 48,
+  },
+  eyeButton: {
+    position: "absolute",
+    right: 16,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
+    width: 32,
   },
 });

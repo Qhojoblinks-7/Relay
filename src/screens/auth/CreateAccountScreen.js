@@ -12,6 +12,7 @@ import {
   ScrollView,
 } from "react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
+import { Eye, EyeOff } from "lucide-react-native";
 import useAuthStore from "../../stores/authStore";
 import { globalStyles } from "../../constants/globalStyles";
 import { COLORS, SIZES } from "../../constants/theme";
@@ -30,6 +31,7 @@ export default function CreateAccountScreen() {
   const [crewName, setCrewName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const pendingNav = useRef(null);
 
@@ -86,6 +88,9 @@ export default function CreateAccountScreen() {
             value={displayName}
             onChangeText={setDisplayName}
             autoCapitalize="words"
+            autoComplete="name"
+            textContentType="name"
+            importantForAutofill="yes"
           />
 
           <TextInput
@@ -95,6 +100,8 @@ export default function CreateAccountScreen() {
             value={crewName}
             onChangeText={setCrewName}
             autoCapitalize="words"
+            autoComplete="off"
+            importantForAutofill="no"
           />
 
           <TextInput
@@ -105,16 +112,27 @@ export default function CreateAccountScreen() {
             onChangeText={setEmail}
             keyboardType="email-address"
             autoCapitalize="none"
+            autoComplete="email"
+            textContentType="emailAddress"
+            importantForAutofill="yes"
           />
 
-          <TextInput
-            style={globalStyles.input}
-            placeholder="Create password"
-            placeholderTextColor={COLORS.textMuted}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
+          <View style={styles.passwordWrapper}>
+            <TextInput
+              style={[globalStyles.input, styles.passwordInput]}
+              placeholder="Create password"
+              placeholderTextColor={COLORS.textMuted}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              autoComplete="password"
+              textContentType="password"
+              importantForAutofill="yes"
+            />
+            <TouchableOpacity style={styles.eyeButton} onPress={() => setShowPassword(!showPassword)}>
+              {showPassword ? <EyeOff size={20} color={COLORS.textMuted} /> : <Eye size={20} color={COLORS.textMuted} />}
+            </TouchableOpacity>
+          </View>
 
           {authError ? <Text style={styles.errorText}>{authError}</Text> : null}
 
@@ -163,5 +181,22 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.6,
+  },
+  passwordWrapper: {
+    position: "relative",
+    width: "100%",
+    marginBottom: SIZES.medium,
+  },
+  passwordInput: {
+    paddingRight: 48,
+  },
+  eyeButton: {
+    position: "absolute",
+    right: 16,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
+    width: 32,
   },
 });

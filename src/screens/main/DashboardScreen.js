@@ -5,6 +5,7 @@ import { Plus } from 'lucide-react-native';
 import { COLORS, SIZES } from '../../constants/theme';
 import useAuthStore from '../../stores/authStore';
 import AddMemberBottomSheet from '../../components/AddMemberBottomSheet';
+import { SkeletonList } from '../../components/Skeleton';
 import {
   collection,
   addDoc,
@@ -110,27 +111,31 @@ export default function DashboardScreen({ navigation }) {
       <Text style={styles.headerTitle}>Dashboard</Text>
 
       <ScrollView contentContainerStyle={styles.scrollList}>
-        {channels.map((channel) => (
-          <TouchableOpacity
-            key={channel.id}
-            style={styles.channelCard}
-            onPress={() =>
-              navigation.navigate('PTT', {
-                crewId,
-                channelId: channel.id,
-                channelName: channel.name,
-              })
-            }
-          >
-            <View style={styles.cardContent}>
-              <Text style={styles.channelName}>{channel.name}</Text>
-              <Text style={styles.channelSubtitle}>{channel.subtitle}</Text>
-            </View>
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{channel.status || 'Online'}</Text>
-            </View>
-          </TouchableOpacity>
-        ))}
+        {channels.length === 0 && crewId ? (
+          <SkeletonList count={4} type="channel" />
+        ) : (
+          channels.map((channel) => (
+            <TouchableOpacity
+              key={channel.id}
+              style={styles.channelCard}
+              onPress={() =>
+                navigation.navigate('PTT', {
+                  crewId,
+                  channelId: channel.id,
+                  channelName: channel.name,
+                })
+              }
+            >
+              <View style={styles.cardContent}>
+                <Text style={styles.channelName}>{channel.name}</Text>
+                <Text style={styles.channelSubtitle}>{channel.subtitle}</Text>
+              </View>
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{channel.status || 'Online'}</Text>
+              </View>
+            </TouchableOpacity>
+          ))
+        )}
       </ScrollView>
 
       {isAdmin && (
