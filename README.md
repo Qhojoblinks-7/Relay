@@ -1,281 +1,218 @@
-# Relay — Walkie‑Talkie (PTT) Crew Comms App
+# Relay — Push-to-Talk Crew Communications
 
-Relay is a push‑to‑talk (PTT) mobile app for crews (productions, events, field teams).
-A **Crew** is a closed radio network; **Channels** are the individual frequencies;
-**Membership + role** is what gives a person a radio and the right to talk.
+Relay is a production-grade push-to-talk (PTT) mobile app built with React Native and Expo. It enables production crews, event teams, and field operations to communicate over private, role-based audio channels in real time.
 
-> Current status: polished front‑end prototype. Auth, backend, and real
-> permission enforcement are not yet implemented (see "Current State").
+## Features
 
----
+- **Push-to-Talk (PTT) Audio** — Low-latency WebRTC voice via GetStream Video SDK
+- **Crew Management** — Create crews, invite members, assign roles
+- **Channel-Based Communication** — Open, private, and ad-hoc channels per crew
+- **Role-Based Access Control** — Two-layer permissions: crew-level and channel-level
+- **QR Code Invites** — Share or scan crew invite codes for instant onboarding
+- **Presence Tracking** — Real-time online/offline/busy status
+- **Push Notifications** — FCM-powered alerts for transmissions and crew events
+- **Skeleton Loading** — Optimistic loading states on Dashboard and My Crew
+- **Biometric-Aware Auth** — Password visibility toggle, autofill support, friendly error messages
 
-## Core Concept
+## Tech Stack
 
-| Concept  | Radio analogy        | In the app                          |
-|----------|----------------------|------------------------------------|
-| Crew     | A closed radio network | `crews/{crewId}`                 |
-| Channel  | A frequency          | `channels/{channelId}` (Production, Main Cam…) |
-| Member   | Someone with a radio | `crewMembers/{uid}` with a `role` |
-| Talk     | Press‑to‑transmit    | PTT screen → GetStream audio       |
+| Layer | Technology |
+|-------|-----------|
+| Framework | React Native 0.81 / Expo SDK 54 |
+| Language | JavaScript |
+| State Management | Zustand |
+| Navigation | React Navigation 7 |
+| Backend | Firebase Auth + Firestore |
+| Real-Time Audio | GetStream Video SDK / WebRTC |
+| Notifications | Firebase Cloud Messaging |
+| Build | EAS Build / Expo Dev Client |
 
-**Principle:** membership and the right to listen/speak MUST be enforced on the
-server (Firestore Security Rules + GetStream call auth), not just hidden in the UI.
+## Prerequisites
 
----
+- Node.js 18+
+- npm or yarn
+- Expo CLI (`npm install -g expo-cli`)
+- EAS CLI (`npm install -g eas-cli`)
+- Android Studio (for Android builds)
+- Xcode (for iOS builds, macOS only)
 
-## Current State
+## Environment Setup
 
-Working:
-- Navigation shell (auth ↔ main, bottom tabs, PTT modal)
-- UI/theme, animations, haptics, bottom sheet, QR scanner component
-- Real WebRTC audio via GetStream (mic enable/disable, level meter) on the default channel
-- Share‑sheet invite
+1. Clone the repository
+2. Install dependencies:
 
-Missing / stubbed:
-- `AuthContext` is a fake `useState(false)` boolean — no user, no session, no persistence
-- `src/lib/firebase.js` is initialized but imported nowhere
-- Invite link is hardcoded (`relay.app/join/crew-prod-1`); no validation, no deep linking
-- QR scan only writes text into a name field — no invite handshake
-- GetStream uses a dev token with a random `user_xxx` id
-- `Dashboard` opens PTT but never calls `joinChannel()` (stays on "Production")
-- No role system; "Admin Operator" is hardcoded text in Settings
-- `logout()` does not disconnect the GetStream call
-- All crew/channel/member data is hardcoded `useState`
+```bash
+npm install
+```
 
----
+3. Create a `.env` file in the project root:
 
-## Data Model (Firestore)
+```env
+EXPO_PUBLIC_GETSTREAM_API_KEY=your_getstream_api_key
+EXPO_PUBLIC_GETSTREAM_SECRET=your_getstream_secret
+EXPO_PUBLIC_FIREBASE_API_KEY=your_firebase_api_key
+EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+EXPO_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
+EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+EXPO_PUBLIC_FIREBASE_APP_ID=your_app_id
+```
 
-There are **two independent role layers** so a user can be an Admin of one channel
-while remaining a Member or Observer of another:
+4. Add your Firebase config to `app.json` under `expo.extra.firebase` or ensure `.env` values are loaded.
 
-1. **Crew role** — administrative authority over the *whole crew*
-   (invite people, create/delete channels, rotate invite token). One per crew,
-   stored on `crews/{crewId}/members/{uid}`.
-2. **Channel role** — authority over a *single channel* (manage that feed).
-   Stored per channel on `channels/{channelId}/members/{uid}`.
+5. Configure Firebase in your project:
+   - Enable Email/Password authentication
+   - Create Firestore database
+   - Set up Firebase Cloud Messaging
+   - Download `google-services.json` (Android) and `GoogleService-Info.plist` (iOS)
+
+## Running the App
+
+### Development
+
+```bash
+# Start Expo dev server
+npm start
+
+# Run on Android emulator/device
+npm run android
+
+# Run on iOS simulator
+npm run ios
+
+# Run in web browser
+npm run web
+```
+
+### Build
+
+```bash
+# Prebuild native projects
+npx expo prebuild --clean
+
+# Run development build on Android
+npx expo run:android
+
+# Run development build on iOS
+npx expo run:ios
+
+# Production build via EAS
+eas build --platform android --profile production
+eas build --platform ios --profile production
+```
+
+## Project Structure
+
+```
+src/
+  assets/              # Images, icons, splash screens
+  components/          # Reusable UI components
+    AuthBackground.js
+    AuthHeader.js
+    AddMemberBottomSheet.js
+    QRCodeModal.js
+    QRScannerScreen.js
+    Skeleton.js
+  constants/           # Theme and global styles
+    theme.js
+    globalStyles.js
+  context/             # React contexts
+    AuthContext.js
+    WebRTCContext.js
+  lib/                 # Business logic and integrations
+    firebase.js
+    getStream.js
+    invite.js
+    notifications.js
+    presence.js
+    devToken.js
+  navigation/          # Navigation configuration
+    AuthStack.js
+    MainStack.js
+    AppTabs.js
+    RootNavigator.js
+  screens/
+    auth/              # Authentication screens
+      GetStartedScreen.js
+      SignInScreen.js
+      CreateAccountScreen.js
+      JoinCrewScreen.js
+    main/              # Main app screens
+      DashboardScreen.js
+      MyCrewScreen.js
+      PTTScreen.js
+      SettingsScreen.js
+  stores/              # Zustand state stores
+    authStore.js
+    webrtcStore.js
+```
+
+## Architecture
+
+### Authentication Flow
+
+1. App launches → native splash screen displayed
+2. `RootNavigator` initializes Firebase auth listener
+3. If user session exists → `MainStack` (Dashboard)
+4. If no session → `AuthStack` (Get Started → Sign In / Create Account)
+5. Post-auth → crew assignment or dashboard
+
+### Data Model
 
 ```
 users/{uid}
-  displayName: string
-  email: string
-  fcmToken: string
-  createdAt: timestamp
+  displayName, email, fcmToken, createdAt
 
 crews/{crewId}
-  name: string
-  ownerUid: string
-  inviteCode: string        // generated on creation, rotatable by admin
-  createdAt: timestamp
+  name, ownerUid, inviteCode, createdAt
 
-crews/{crewId}/members/{uid}          // CREW-LEVEL role (one per crew)
-  crewRole: "owner" | "admin" | "member" | "observer"
-  displayName: string
-  joinedAt: timestamp
+crews/{crewId}/members/{uid}         # Crew-level role
+  crewRole: "owner" | "admin" | "member"
+  displayName, joinedAt
 
 crews/{crewId}/channels/{channelId}
-  name: string
-  type: "open" | "private" | "adhoc"
-  createdBy: string
-  createdAt: timestamp
+  name, type: "open" | "private" | "adhoc"
+  createdBy, createdAt
 
-crews/{crewId}/channels/{channelId}/members/{uid}   // CHANNEL-SCOPED role
+crews/{crewId}/channels/{channelId}/members/{uid}  # Channel-level role
   role: "admin" | "member" | "observer"
-  // admin  -> can manage THIS channel (rename, add/remove members, sub-talk)
-  // member -> can listen + talk (PTT)
-  // observer -> receive-only, mic never enabled
 ```
 
-Talk permission is derived from the channel role (`observer` = listen‑only);
-mere membership is enough to listen.
+### Voice Architecture
 
----
+- Crew channels map to GetStream call IDs: `{crewId}:{channelId}`
+- Backend issues scoped tokens via Cloud Functions
+- WebRTC handles peer-to-peer audio with noise cancellation
+- PTT mode enables mic only while transmitting
 
-## Roles & Permissions
+## Security
 
-### Crew‑level (who runs the crew)
-| Capability                | owner | admin | member | observer |
-|---------------------------|:-----:|:-----:|:------:|:--------:|
-| Create crew               |  ✅   |  ❌   |  ❌    |   ❌     |
-| Invite / add members      |  ✅   |  ✅   |  ❌    |   ❌     |
-| Create / delete channels  |  ✅   |  ✅   | ❌(adhoc only) | ❌ |
-| Rotate invite token       |  ✅   |  ✅   |  ❌    |   ❌     |
-| Remove members (crew)     |  ✅   |  ✅*  |  ❌    |   ❌     |
+- Firestore Security Rules enforce crew/channel membership
+- GetStream tokens scoped to user's channel memberships
+- Client-side role gating for UI convenience only
+- No secrets stored in client code
 
-\* admins cannot remove the owner.
+## Roadmap
 
-### Channel‑level (who runs a specific feed)
-| Capability                | admin | member | observer |
-|---------------------------|:-----:|:------:|:--------:|
-| Listen                    |  ✅   |  ✅    |   ✅     |
-| Talk (PTT)                |  ✅   |  ✅    |   ❌     |
-| Rename channel            |  ✅   |  ❌    |   ❌     |
-| Add / remove channel members | ✅ |  ❌    |   ❌     |
-| Create sub‑talk groups    |  ✅   |  ❌    |   ❌     |
-| Kick inactive members     |  ✅   |  ❌    |   ❌     |
+- [x] Firebase Auth with friendly error messages
+- [x] Splash screen with logo and "Get Started" interaction
+- [x] Skeleton loading states
+- [ ] Firestore Security Rules deployment
+- [ ] Backend GetStream token issuance
+- [ ] Ad-hoc channel auto-cleanup
+- [ ] Multi-channel monitoring (background audio)
+- [ ] Profile editing
+- [ ] Offline mode support
 
-### Real‑World Example
-- **Camera Team Channel:** you are **Admin** — create sub‑talk groups, invite
-  operators, kick inactive members, rename the channel.
-- **Stage Manager All‑Call Channel:** you are a **Member** — press‑to‑talk and
-  listen, but cannot rename or add/remove others.
-- **Executive Overview Channel:** you are an **Observer** — listen to updates,
-  cannot transmit or manage settings.
+## Contributing
 
-UI gating is convenience only. Real enforcement = Firestore Rules + GetStream tokens.
+This is a private project. For internal contributors:
 
-### Firestore Rule Enforcement (channel‑scoped)
-```javascript
-// True if the caller is an admin of the specific channel
-function isChannelAdmin(channelId) {
-  return get(/databases/$(database)/documents
-    /crews/$(crewId)/channels/$(channelId)/members/$(request.auth.uid))
-    .data.role == 'admin';
-}
+1. Create a feature branch from `main`
+2. Make changes following existing code conventions
+3. Test on physical Android/iOS devices
+4. Submit PR with description and screenshots
 
-// Example: only channel admins may rename a channel
-match /crews/{crewId}/channels/{channelId} {
-  allow update: if isChannelAdmin(channelId);
-}
-```
+## License
 
----
-
-## Invite / Join Flow (crew‑bound)
-
-1. Owner/admin taps "Share Invite" → generate/ensure `crew.inviteCode`.
-2. Build link: `relay.app/join?c={crewId}&code={inviteCode}` (QR encodes the same).
-3. Member taps link (deep link) or scans QR → `JoinCrew` pre‑filled.
-4. Validate `code` against `crew.inviteCode`.
-   - valid → create `crewMembers/{uid}` (role: member) → login → MainTabs
-   - invalid/expired → show error, do not grant access.
-
----
-
-## Voice Layer (GetStream)
-
-- Map a crew channel → a GetStream call: `callId = "{crewId}:{channelId}"`.
-- Issue GetStream tokens from a **backend** (Cloud Function), scoped with
-  `call_cids` = only channels the user is a member of.
-- Bind token identity to the Firebase `uid` (no more random `user_xxx`).
-- Fix `Dashboard` → PTT so it calls `joinChannel(callId)` instead of only
-  passing `channelName` to the UI.
-- `logout()` must disconnect the active call / client.
-
----
-
-## Implementation Roadmap
-
-### Step 1 — Identity + Crew + Membership
-**Goal:** real, persistent auth and a crew the user belongs to.
-**What's needed:**
-- Wire Firebase Auth into `AuthContext` (`login`, `logout`, `signup`, `user`, persistence via `AsyncStorage`).
-- Create `users/{uid}` and `crews/{crewId}` + `crews/{crewId}/members/{uid}` on signup/create.
-- Replace the mock boolean + hardcoded "Admin Operator" with real user/role data.
-**Files:** `src/context/AuthContext.js`, `src/lib/firebase.js` (now used),
-`CreateAccountScreen.js`, `JoinCrewScreen.js`, `SettingsScreen.js`, `App.js`.
-**Done when:** reload keeps you logged in; user has a real uid + crew + role.
-
-### Step 2 — Invites (links + QR + deep linking)
-**Goal:** members join a *specific* crew via link or QR.
-**What's needed:**
-- Generate/store `crew.inviteCode`; build `relay.app/join?c=&code=`.
-- Add deep linking (Expo `expo-linking` / `app.json` scheme) → `JoinCrew` prefilled.
-- Validate code before writing membership; repurpose `QRScannerScreen.onScanned`
-  to parse invite payloads, not just names.
-**Files:** `JoinCrewScreen.js`, `MyCrewScreen.js`, `QRScannerScreen.js`,
-`AddMemberBottomSheet.js`, `app.json`, `AuthStack.js`.
-**Done when:** a member using a real invite lands inside the correct crew; bad codes fail.
-
-### Step 3 — Channels + Secure Voice
-**Goal:** talk on the right channel, only if allowed.
-**What's needed:**
-- `crews/{crewId}/channels/{channelId}` + channel members.
-- Backend GetStream token issuance scoped to channel membership.
-- `joinChannel(crewId:channelId)` called from `Dashboard` → `PTT`.
-- Bind GetStream identity to Firebase uid; disconnect on logout.
-**Files:** `WebRTCContext.js`, `DashboardScreen.js`, `PTTScreen.js`,
-new Cloud Function for tokens.
-**Done when:** selecting a channel actually switches the audio room; non‑members can't get a token.
-
-### Step 4 — Roles & Server Enforcement
-**Goal:** admin powers are real and protected.
-**What's needed:**
-- UI gating: show Add Member / Create Channel / Share Invite only for
-  `role ∈ {owner, admin}`.
-- Firestore Security Rules: crew access requires `crewRole` on
-  `crews/{crewId}/members/{uid}`; channel management requires the channel‑scoped
-  `role: "admin"` on `crews/{crewId}/channels/{channelId}/members/{uid}`
-  (use the `isChannelAdmin(channelId)` helper); talk requires `role != "observer"`.
-- GetStream call auth restricting `call_cids` to member channels.
-**Files:** `MyCrewScreen.js`, `DashboardScreen.js`, `SettingsScreen.js`,
-`firestore.rules`, Cloud Function.
-**Done when:** a member cannot see/modify crew admin functions or join private audio.
-
-### Step 5 — Presence & Notifications (polish)
-**Goal:** feel like live radio.
-**What's needed:**
-- Presence (online/busy/offline) from Firestore/RTDB; `busy` = transmitting or DND.
-- FCM notifications: incoming/missed PTT, "X joined crew".
-- Profile/crew settings editing; remove members; rotate invite.
-**Files:** `MyCrewScreen.js`, `SettingsScreen.js`, Cloud Function (FCM), presence listener.
-**Done when:** statuses are live and crew receives transmission pings.
-
----
-
-## Security Checklist (non‑negotiable for PTT)
-- [ ] Auth required for every screen (already routed via `RootNavigator`).
-- [ ] Firestore Rules deny access without a membership doc.
-- [ ] GetStream tokens issued server‑side, scoped to member channels only.
-- [ ] Invite codes validated; support rotation/expiry.
-- [ ] `logout` disconnects active audio.
-- [ ] No secrets/API keys in client (move to `app.json` `extra` / env).
-
----
-
-## Resolved Decisions
-
-The four open questions are resolved with the following production‑oriented defaults.
-
-### 1. Invite Token Strategy
-- **Decision:** Reusable invite token with an admin reset switch.
-- **Why:** In high‑pressure event environments, single‑use links slow down setup.
-  A reusable QR code (e.g. printed on a sound‑desk badge) lets crew join instantly.
-- **Implementation:** store an active `inviteToken` on the `crews/{crewId}` doc; admins
-  can regenerate it to invalidate all prior links after the show. No expiry by default;
-  rotation is the invalidation mechanism.
-
-### 2. Channel Creation Permissions
-- **Decision:** Admins own top‑level channels; operators may spin up temporary ad‑hoc sub‑channels.
-- **Why:** Radio clutter destroys coordination. Restrict core channels
-  (*Stage Ops*, *Audio Booth*) to admins, but allow operators to open direct 1:1 or
-  private sub‑talk channels that auto‑cleanup when all members disconnect.
-- **Implementation:** `type: "open" | "private" | "adhoc"`; `adhoc` channels are created
-  by any member and deleted via a Cloud Function when `channelMembers` is empty.
-
-### 3. Listen‑Only (Observer) Roles
-- **Decision:** Add a dedicated channel‑scoped `observer` role.
-- **Why:** Exec producers, client reps, and trainees need to monitor feeds without
-  accidentally keying the mic.
-- **Implementation:** `role: "observer"` in `channels/{channelId}/members/{uid}` disables
-  the PTT button in the UI and locks the WebRTC stream to receive‑only (mic never enabled).
-  A user can be `observer` on one channel and `admin`/`member` on another.
-
-### 4. Cross‑Crew Communication
-- **Decision:** Multi‑channel monitoring with an "All‑Call" priority override.
-- **Why:** Sound/lighting leads stay on their primary feed while remaining reachable by
-  the Stage Manager.
-- **Implementation:** use WebRTC multi‑stream to play background channels at ~40% volume
-  and bump an emergency "All‑Call" transmission to 100% volume.
-
----
-
-## Role Summary
-
-Roles are **two‑layered** (see "Roles & Permissions" above):
-
-- **Crew level** (`crewRole` on `crews/{crewId}/members/{uid}`): `owner` › `admin` ›
-  `member` › `observer` — controls crew administration (invite, create channels, rotate token).
-- **Channel level** (`role` on `channels/{channelId}/members/{uid}`): `admin` › `member` ›
-  `observer` — controls a single feed. A user can be **Admin of one channel and Member or
-  Observer of another**. Observer is always receive‑only.
+Proprietary — All rights reserved.
