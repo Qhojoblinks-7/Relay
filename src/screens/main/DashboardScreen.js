@@ -113,6 +113,8 @@ export default function DashboardScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.scrollList}>
         {channels.length === 0 && crewId ? (
           <SkeletonList count={4} type="channel" />
+        ) : channels.length === 0 ? (
+          <Text style={styles.emptyText}>No channels yet. Create one to get started.</Text>
         ) : (
           channels.map((channel) => (
             <TouchableOpacity
@@ -223,7 +225,13 @@ const styles = StyleSheet.create({
   },
   createButtonText: {
     color: COLORS.background,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     fontSize: 16,
+  },
+  emptyText: {
+    color: COLORS.textMuted,
+    fontSize: 16,
+    textAlign: "center",
+    marginTop: 40,
   },
 });

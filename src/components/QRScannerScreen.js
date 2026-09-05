@@ -14,15 +14,30 @@ export default function QRScannerScreen({ visible, onClose, onScanned }) {
     if (visible) {
       setScanned(false);
       (async () => {
-        const { status } = await Camera.requestCameraPermissionsAsync();
-        console.log('[QRScanner] camera permission status:', status);
-        setHasPermission(status === 'granted');
+        try {
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Camera permission timeout')), 5000)
+          );
+          const { status } = await Promise.race([
+            Camera.requestCameraPermissionsAsync(),
+            timeoutPromise,
+          ]);
+          console.log('[QRScanner] camera permission status:', status);
+          setHasPermission(status === 'granted');
+        } catch (e) {
+          console.error('[QRScanner] camera permission error:', e);
+          setHasPermission(false);
+        }
       })();
     }
   }, [visible]);
 
   const handleBarCodeScanned = ({ type, data }) => {
     if (scanned) return;
+    if (!data) {
+      console.error('[QRScanner] barcode scan returned empty data');
+      return;
+    }
     setScanned(true);
     onScanned?.(data);
   };

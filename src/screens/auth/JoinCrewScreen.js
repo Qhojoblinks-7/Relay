@@ -24,6 +24,7 @@ import AuthBackground from "../../components/AuthBackground";
 export default function JoinCrewScreen() {
   const joinCrewAsExistingUser = useAuthStore((state) => state.joinCrewAsExistingUser);
   const user = useAuthStore((state) => state.user);
+  const currentCrewId = useAuthStore((state) => state.crewId);
   const authError = useAuthStore((state) => state.authError);
   const route = useRoute();
   const navigation = useNavigation();
@@ -31,6 +32,7 @@ export default function JoinCrewScreen() {
   const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [joinError, setJoinError] = useState(null);
 
   const { crewId, code } = parseInvite(link);
 
@@ -40,25 +42,67 @@ export default function JoinCrewScreen() {
     }
   }, [route.params?.joinCrewId, route.params?.joinCode]);
 
+  useEffect(() => {
+    if (user && crewId && currentCrewId && crewId === currentCrewId) {
+      console.log('[JoinCrew] user already a member of crew, navigating to MainTabs');
+      navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+    }
+  }, [user, crewId, currentCrewId, navigation]);
+
+  useEffect(() => {
+    if (link && !crewId) {
+      console.error('[JoinCrew] invite link could not be parsed into crewId + code:', { link });
+    }
+  }, [link, crewId]);
+
+  useEffect(() => {
+    setJoinError(null);
+  }, [link]);
+
   const handleJoinExisting = async () => {
     if (!crewId || !code) return;
     setLoading(true);
+    setJoinError(null);
     try {
       await joinCrewAsExistingUser({ crewId, code, displayName: displayName || user?.email });
+      if (user) {
+        navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+      }
     } catch (e) {
-      // authError surfaced from context
+      const message = e?.message || 'Something went wrong. Please try again.';
+      console.error('[JoinCrew] join failed:', {
+        error: e,
+        code: e?.code,
+        message,
+        crewId,
+        code,
+      });
+      setJoinError(message);
     } finally {
       setLoading(false);
     }
   };
 
   const handleScanned = (data) => {
+    if (__DEV__) {
+      console.log('[QR] raw scanned data:', data);
+    }
     setShowScanner(false);
     const parsed = parseInvite(data);
-    if (parsed.crewId || parsed.code) {
+    const hasCrewId = Boolean(parsed.crewId);
+    const hasCode = Boolean(parsed.code);
+    if (hasCrewId && hasCode) {
       setLink(parsed.raw || `${parsed.crewId} ${parsed.code}`);
+      if (user && parsed.crewId === currentCrewId) {
+        console.log('[QR] user already a member of this crew, navigating to MainTabs');
+        navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+      }
+    } else if (hasCode && !hasCrewId) {
+      console.warn('[QR] scanned data looks like a raw invite code but no crewId was provided:', parsed.code);
+      setLink(parsed.code);
     } else {
-      setLink(data);
+      console.error('[QR] scanned data is not a valid invite link or code:', data);
+      setLink('');
     }
   };
 
@@ -166,7 +210,9 @@ export default function JoinCrewScreen() {
             </>
           )}
 
-          {authError ? <Text style={styles.errorText}>{authError}</Text> : null}
+          {(joinError || authError) ? (
+            <Text style={styles.errorText}>{joinError || authError}</Text>
+          ) : null}
 
           <Text style={globalStyles.subtitle}>Use the link from your admin</Text>
         </View>

@@ -10,6 +10,7 @@ import logo from "../assets/icon-1024.png";
 export default function RootNavigator({ onReady, onGetStarted }) {
   const loading = useAuthStore((state) => state.loading);
   const user = useAuthStore((state) => state.user);
+  const crewId = useAuthStore((state) => state.crewId);
   const readyRef = useRef(false);
   const [splashDismissed, setSplashDismissed] = useState(false);
 
@@ -34,5 +35,11 @@ export default function RootNavigator({ onReady, onGetStarted }) {
     );
   }
 
-  return user ? <MainStack /> : <AuthStack />;
+  const stack = user && crewId ? <MainStack /> : <AuthStack />;
+
+  if (__DEV__) {
+    console.log('[RootNavigator] render stack:', { user: !!user, crewId: !!crewId });
+  }
+
+  return stack;
 }

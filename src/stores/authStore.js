@@ -58,10 +58,10 @@ const FRIENDLY_ERRORS = {
 
 const toFriendlyError = (error) => {
   if (!error || !error.message) return 'Something went wrong. Please try again.';
-  const code = error.code || error.message;
+  const code = error.code || '';
   if (FRIENDLY_ERRORS[code]) return FRIENDLY_ERRORS[code];
   if (error.message && FRIENDLY_ERRORS[error.message]) return FRIENDLY_ERRORS[error.message];
-  return 'Something went wrong. Please try again.';
+  return error.message;
 };
 
 const useAuthStore = create((set, get) => ({
@@ -173,28 +173,30 @@ const useAuthStore = create((set, get) => ({
     const { setAuthError } = get();
     setAuthError(null);
     try {
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      const uid = cred.user.uid;
+
+      await setDoc(doc(db, 'crews', crewId, 'members', uid), {
+        crewRole: 'member',
+        displayName,
+        joinedAt: serverTimestamp(),
+      });
+
       const crewDoc = await getDoc(doc(db, 'crews', crewId));
       if (!crewDoc.exists()) {
+        await doc(db, 'crews', crewId, 'members', uid).delete();
         throw new Error('Crew not found. Check your invite link.');
       }
       if (crewDoc.data().inviteCode !== code) {
+        await doc(db, 'crews', crewId, 'members', uid).delete();
         throw new Error('Invalid or expired invite code.');
       }
-
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      const uid = cred.user.uid;
 
       await setDoc(doc(db, 'users', uid), {
         displayName,
         email,
         crewId,
         createdAt: serverTimestamp(),
-      });
-
-      await setDoc(doc(db, 'crews', crewId, 'members', uid), {
-        crewRole: 'member',
-        displayName,
-        joinedAt: serverTimestamp(),
       });
 
       const channelsSnap = await getDocs(collection(db, 'crews', crewId, 'channels'));
@@ -221,25 +223,27 @@ const useAuthStore = create((set, get) => ({
         throw new Error('You must be signed in to join a crew.');
       }
 
-      const crewDoc = await getDoc(doc(db, 'crews', crewId));
-      if (!crewDoc.exists()) {
-        throw new Error('Crew not found. Check your invite link.');
-      }
-      if (crewDoc.data().inviteCode !== code) {
-        throw new Error('Invalid or expired invite code.');
-      }
-
       const uid = user.uid;
-
-      await updateDoc(doc(db, 'users', uid), {
-        crewId,
-        ...(displayName ? { displayName } : {}),
-      });
 
       await setDoc(doc(db, 'crews', crewId, 'members', uid), {
         crewRole: 'member',
         displayName: displayName || user.email,
         joinedAt: serverTimestamp(),
+      });
+
+      const crewDoc = await getDoc(doc(db, 'crews', crewId));
+      if (!crewDoc.exists()) {
+        await doc(db, 'crews', crewId, 'members', uid).delete();
+        throw new Error('Crew not found. Check your invite link.');
+      }
+      if (crewDoc.data().inviteCode !== code) {
+        await doc(db, 'crews', crewId, 'members', uid).delete();
+        throw new Error('Invalid or expired invite code.');
+      }
+
+      await updateDoc(doc(db, 'users', uid), {
+        crewId,
+        ...(displayName ? { displayName } : {}),
       });
 
       const channelsSnap = await getDocs(collection(db, 'crews', crewId, 'channels'));
