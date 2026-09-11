@@ -1,5 +1,5 @@
 // src/screens/main/SettingsScreen.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, StyleSheet, Switch, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { SlidersHorizontal, Volume2, LogOut, Shield, Speaker } from 'lucide-react-native';
 import { COLORS, SIZES } from '../../constants/theme';
@@ -19,9 +19,15 @@ export default function SettingsScreen() {
   const crew = useAuthStore((state) => state.crew);
   const crewRole = useAuthStore((state) => state.crewRole);
   const user = useAuthStore((state) => state.user);
-  const [displayName, setDisplayName] = useState(profile?.displayName || '');
+  const [displayName, setDisplayName] = useState('');
   const [highQualityAudio, setHighQualityAudio] = useState(true);
   const [pttBeep, setPttBeep] = useState(true);
+
+  useEffect(() => {
+    if (profile?.displayName) {
+      setDisplayName(profile.displayName);
+    }
+  }, [profile?.displayName]);
 
   const handleLogout = async () => {
     await disconnect();

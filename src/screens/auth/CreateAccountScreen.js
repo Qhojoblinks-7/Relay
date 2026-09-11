@@ -1,5 +1,5 @@
 // src/screens/auth/CreateAccountScreen.js
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -26,28 +26,15 @@ export default function CreateAccountScreen() {
   const signUpOnly = useAuthStore((state) => state.signUpOnly);
   const joinCrewAsExistingUser = useAuthStore((state) => state.joinCrewAsExistingUser);
   const authError = useAuthStore((state) => state.authError);
-  const authLoading = useAuthStore((state) => state.loading);
   const [displayName, setDisplayName] = useState("");
   const [crewName, setCrewName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const pendingNav = useRef(null);
 
   const joinCrewId = route.params?.joinCrewId;
   const joinCode = route.params?.joinCode;
-
-  useEffect(() => {
-    if (!authLoading && pendingNav.current) {
-      const target = pendingNav.current;
-      pendingNav.current = null;
-      navigation.reset({
-        index: 0,
-        routes: [target],
-      });
-    }
-  }, [authLoading, navigation]);
 
   const handleCreate = async () => {
     if (!displayName || !email || !password) return;
@@ -56,10 +43,8 @@ export default function CreateAccountScreen() {
       if (joinCrewId && joinCode) {
         await signUpOnly({ email, password, displayName });
         await joinCrewAsExistingUser({ crewId: joinCrewId, code: joinCode, displayName });
-        pendingNav.current = { name: 'MainTabs' };
       } else {
         await signUp({ email, password, displayName, crewName: crewName || "My Crew" });
-        pendingNav.current = { name: 'MainTabs' };
       }
     } catch (e) {
       // authError surfaced from context
@@ -93,16 +78,18 @@ export default function CreateAccountScreen() {
             importantForAutofill="yes"
           />
 
-          <TextInput
-            style={globalStyles.input}
-            placeholder="Crew name (e.g. Stage Ops)"
-            placeholderTextColor={COLORS.textMuted}
-            value={crewName}
-            onChangeText={setCrewName}
-            autoCapitalize="words"
-            autoComplete="off"
-            importantForAutofill="no"
-          />
+          {!joinCrewId && !joinCode && (
+            <TextInput
+              style={globalStyles.input}
+              placeholder="Crew name (e.g. Stage Ops)"
+              placeholderTextColor={COLORS.textMuted}
+              value={crewName}
+              onChangeText={setCrewName}
+              autoCapitalize="words"
+              autoComplete="off"
+              importantForAutofill="no"
+            />
+          )}
 
           <TextInput
             style={globalStyles.input}

@@ -1,5 +1,5 @@
 // src/screens/auth/JoinCrewScreen.js
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -34,6 +34,9 @@ export default function JoinCrewScreen() {
   const [showScanner, setShowScanner] = useState(false);
   const [joinError, setJoinError] = useState(null);
 
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
   const { crewId, code } = parseInvite(link);
 
   useEffect(() => {
@@ -64,8 +67,9 @@ export default function JoinCrewScreen() {
     setLoading(true);
     setJoinError(null);
     try {
+      const hadCrewBefore = !!currentCrewId;
       await joinCrewAsExistingUser({ crewId, code, displayName: displayName || user?.email });
-      if (user) {
+      if (user && hadCrewBefore) {
         navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
       }
     } catch (e) {
@@ -77,9 +81,9 @@ export default function JoinCrewScreen() {
         crewId,
         code,
       });
-      setJoinError(message);
+      if (mountedRef.current) setJoinError(message);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   };
 

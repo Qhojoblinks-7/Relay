@@ -95,7 +95,7 @@ export default function MyCrewScreen() {
         });
       }
 
-      Alert.alert('Member Added', `Credentials for ${name}:\nEmail: ${email}\nPassword: ${password}`);
+      Alert.alert('Member Added', `${name} has been added to the crew.\nEmail: ${email}`);
     } catch (e) {
       Alert.alert('Error', e.message);
     }

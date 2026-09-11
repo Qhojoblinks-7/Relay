@@ -1,6 +1,6 @@
 // src/screens/main/PTTScreen.js
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, Animated, Vibration, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Animated, Vibration, Dimensions, NativeEventEmitter, NativeModules } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Wifi, Volume2, X, Mic, SlidersHorizontal, Smartphone } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -23,7 +23,6 @@ export default function PTTScreen({ route, navigation }) {
   const startTransmitting = useWebRTCStore((state) => state.startTransmitting);
   const stopTransmitting = useWebRTCStore((state) => state.stopTransmitting);
   const isMuted = useWebRTCStore((state) => state.isMuted);
-  const isTransmitting = isPressed;
   const isNoiseCancellationActive = useWebRTCStore((state) => state.isNoiseCancellationActive);
   const toggleNoiseCancellation = useWebRTCStore((state) => state.toggleNoiseCancellation);
   const levelValue = useWebRTCStore((state) => state.levelValue);
@@ -44,6 +43,8 @@ export default function PTTScreen({ route, navigation }) {
   const [volume, setVolume] = useState(0.65);
   const [isPressed, setIsPressed] = useState(false);
   const isPressedRef = useRef(false);
+  const volumeAdjustingRef = useRef(false);
+  const volumePressTimerRef = useRef(null);
   const [handsetMode, setHandsetMode] = useState(false);
   const volumeSubRef = useRef(null);
   const lastKnownVolume = useRef(0.65);
@@ -57,6 +58,7 @@ export default function PTTScreen({ route, navigation }) {
       try {
         const { volume } = await VolumeManager.getVolume();
         lastKnownVolume.current = volume;
+        setVolume(volume);
       } catch (e) {
         // Volume manager not ready
       }
@@ -64,9 +66,14 @@ export default function PTTScreen({ route, navigation }) {
 
     return () => {
       console.log('[PTT] unmount');
+      if (proximitySubRef.current) {
+        proximitySubRef.current.remove?.();
+        proximitySubRef.current = null;
+      }
       try {
         InCallManager.setKeepScreenOn(false);
         InCallManager.stopProximitySensor();
+        InCallManager.stop({ media: 'audio' });
       } catch (e) {
         // cleanup
       }
@@ -75,11 +82,45 @@ export default function PTTScreen({ route, navigation }) {
         volumeSubRef.current.remove();
         volumeSubRef.current = null;
       }
+      try { VolumeManager.showNativeVolumeUI({ enabled: true }); } catch (e) {}
+      if (volumePressTimerRef.current) {
+        clearTimeout(volumePressTimerRef.current);
+        volumePressTimerRef.current = null;
+      }
     };
+  }, []);
+
+  const proximitySubRef = useRef(null);
+
+  const setForceSpeakerphone = useCallback(async (on) => {
+    const toggleSpeakerphone = useWebRTCStore.getState().toggleSpeakerphone;
+    const isCurrentlySpeaker = useWebRTCStore.getState().isSpeakerphone;
+    if (on && !isCurrentlySpeaker) {
+      await toggleSpeakerphone();
+    } else if (!on && isCurrentlySpeaker) {
+      await toggleSpeakerphone();
+    }
+    try {
+      InCallManager.setForceSpeakerphoneOn(on);
+    } catch (e) {
+      console.warn('[PTT] InCallManager.setForceSpeakerphoneOn failed:', e.message);
+    }
   }, []);
 
   const enableHandsetMode = useCallback(async () => {
     console.log('[PTT] enableHandsetMode start');
+    try {
+      InCallManager.start({ media: 'audio' });
+      console.log('[PTT] InCallManager started (audio)');
+    } catch (e) {
+      console.warn('[PTT] InCallManager.start failed:', e.message);
+    }
+    try {
+      await setForceSpeakerphone(true);
+      console.log('[PTT] speakerphone enabled');
+    } catch (e) {
+      console.warn('[PTT] speakerphone enable failed:', e.message);
+    }
     try {
       InCallManager.setKeepScreenOn(true);
       console.log('[PTT] keep screen on set');
@@ -93,12 +134,33 @@ export default function PTTScreen({ route, navigation }) {
       } else {
         console.warn('[PTT] startProximitySensor not available');
       }
+
+      let sub = null;
+      try {
+        const emitter = new NativeEventEmitter(NativeModules.RNInCallManager);
+        sub = emitter.addListener('ProximitySensor', ({ near }) => {
+          console.log('[PTT] proximity sensor event:', { near });
+          setForceSpeakerphone(!near).catch((e) =>
+            console.warn('[PTT] proximity audio route failed:', e.message)
+          );
+        });
+      } catch (e) {
+        if (typeof InCallManager.addEventListener === 'function') {
+          sub = InCallManager.addEventListener('ProximitySensor', ({ near }) => {
+            console.log('[PTT] proximity event (InCall fallback):', { near });
+            setForceSpeakerphone(!near).catch((e) =>
+              console.warn('[PTT] proximity audio route failed:', e.message)
+            );
+          });
+        }
+      }
+      proximitySubRef.current = sub;
     } catch (e) {
-      console.warn('[PTT] proximity sensor failed:', e.message);
+      console.warn('[PTT] proximity sensor setup failed:', e.message);
     }
     setHandsetMode(true);
     console.log('[PTT] handsetMode set to true');
-  }, []);
+  }, [setForceSpeakerphone]);
 
   const disableHandsetMode = useCallback(async () => {
     console.log('[PTT] disableHandsetMode start');
@@ -114,9 +176,24 @@ export default function PTTScreen({ route, navigation }) {
     } catch (e) {
       console.warn('[PTT] stop proximity sensor failed:', e.message);
     }
+    if (proximitySubRef.current) {
+      proximitySubRef.current.remove?.();
+      proximitySubRef.current = null;
+    }
+    try {
+      InCallManager.setForceSpeakerphoneOn(true);
+      await setForceSpeakerphone(true);
+    } catch (e) {
+      console.warn('[PTT] force speakerphone reset failed:', e.message);
+    }
+    try {
+      InCallManager.stop({ media: 'audio' });
+    } catch (e) {
+      console.warn('[PTT] InCallManager.stop failed:', e.message);
+    }
     setHandsetMode(false);
     console.log('[PTT] handsetMode set to false');
-  }, []);
+  }, [setForceSpeakerphone]);
 
   // Switch the voice client to the selected crew channel once the voice client
   // is ready. Non-members will be rejected inside joinChannel.
@@ -210,6 +287,7 @@ export default function PTTScreen({ route, navigation }) {
   };
 
   const handleVolumeChange = async (newVolume) => {
+    volumeAdjustingRef.current = true;
     setVolume(newVolume);
     try {
       if (soundRef.current) {
@@ -218,6 +296,14 @@ export default function PTTScreen({ route, navigation }) {
     } catch (e) {
       // Volume update fallback
     }
+    try {
+      if (VolumeManager?.setVolume) {
+        await VolumeManager.setVolume(newVolume);
+      }
+    } catch (e) {
+      console.warn('[PTT] setVolume failed:', e.message);
+    }
+    setTimeout(() => { volumeAdjustingRef.current = false; }, 100);
   };
 
   // Map volume button presses to PTT for hands-free operation.
@@ -232,15 +318,39 @@ export default function PTTScreen({ route, navigation }) {
   useEffect(() => {
     if (!activeChannel || !VolumeManager?.addVolumeListener) return;
 
+    let showNativeUI = true;
+    try {
+      VolumeManager.showNativeVolumeUI({ enabled: false });
+      showNativeUI = false;
+      console.log('[PTT] native volume UI suppressed');
+    } catch (e) {
+      console.warn('[PTT] showNativeVolumeUI not available:', e.message);
+    }
+
     const subscription = VolumeManager.addVolumeListener(({ volume }) => {
+      if (volumeAdjustingRef.current) return;
       if (!canTalk || channelBusy) return;
 
       const previous = lastKnownVolume.current;
       lastKnownVolume.current = volume;
 
-      if (volume > previous + 0.02) {
-        handlePressInRef.current?.();
-      } else if (volume < previous - 0.02) {
+      const delta = volume - previous;
+
+      if (delta > 0.02) {
+        if (volumePressTimerRef.current) {
+          clearTimeout(volumePressTimerRef.current);
+        } else {
+          handlePressInRef.current?.();
+        }
+        volumePressTimerRef.current = setTimeout(() => {
+          volumePressTimerRef.current = null;
+          handlePressOutRef.current?.();
+        }, 150);
+      } else if (delta < -0.02) {
+        if (volumePressTimerRef.current) {
+          clearTimeout(volumePressTimerRef.current);
+          volumePressTimerRef.current = null;
+        }
         handlePressOutRef.current?.();
       }
     });
@@ -248,6 +358,13 @@ export default function PTTScreen({ route, navigation }) {
     volumeSubRef.current = subscription;
 
     return () => {
+      if (volumePressTimerRef.current) {
+        clearTimeout(volumePressTimerRef.current);
+        volumePressTimerRef.current = null;
+      }
+      if (showNativeUI) {
+        try { VolumeManager.showNativeVolumeUI({ enabled: true }); } catch (e) {}
+      }
       if (volumeSubRef.current) {
         volumeSubRef.current.remove();
         volumeSubRef.current = null;
@@ -329,7 +446,7 @@ export default function PTTScreen({ route, navigation }) {
             styles.micButton,
             isMuted && styles.micButtonActive,
             !canTalk && styles.micButtonDisabled,
-            isTransmitting && styles.micButtonTransmitting,
+            isPressed && styles.micButtonTransmitting,
           ]}
         >
           <Mic color={COLORS.text} size={RING_SIZE * 0.35} />
@@ -351,10 +468,10 @@ export default function PTTScreen({ route, navigation }) {
         {!canTalk && (
           <Text style={styles.listenOnlyText}>Listen-only · observers can't transmit</Text>
         )}
-        {canTalk && !channelBusy && !isTransmitting && (
+        {canTalk && !channelBusy && !isPressed && (
           <Text style={styles.listenOnlyText}>Press volume up or tap to talk</Text>
         )}
-        {canTalk && isTransmitting && (
+        {canTalk && isPressed && (
           <Text style={[styles.listenOnlyText, styles.transmittingText]}>Transmitting...</Text>
         )}
       </View>
@@ -367,6 +484,7 @@ export default function PTTScreen({ route, navigation }) {
         <Pressable
           onLayout={(e) => { sliderWidth.current = e.nativeEvent.layout.width; }}
           onPress={(e) => {
+            if (sliderWidth.current === 0) return;
             const x = e.nativeEvent.locationX;
             const newVolume = Math.max(0, Math.min(1, x / sliderWidth.current));
             handleVolumeChange(newVolume);

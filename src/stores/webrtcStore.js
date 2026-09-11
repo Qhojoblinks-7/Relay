@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Animated } from 'react-native';
+import { Animated, AppState, Vibration } from 'react-native';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import {
   StreamVideoClient,
@@ -39,6 +39,7 @@ if (!API_KEY || API_KEY === 'YOUR_GETSTREAM_API_KEY') {
 
 const useWebRTCStore = create((set, get) => ({
   client: null,
+  clientCrewId: null,
   activeCall: null,
   activeChannel: null,
   ready: false,
@@ -58,10 +59,32 @@ const useWebRTCStore = create((set, get) => ({
   _ncInstance: null,
 
   initializeClient: (user, crewId) => {
-    if (!user) return () => {};
+    if (!user) {
+      const { client, activeCall } = get();
+      if (client) {
+        client.disconnectUser().catch((e) =>
+          console.warn('[WebRTC] auto-disconnect on logout failed:', e.message)
+        );
+      }
+      if (activeCall) {
+        activeCall.leave().catch((e) =>
+          console.warn('[WebRTC] cleanup leave on logout failed:', e.message)
+        );
+      }
+      set({
+        client: null,
+        clientCrewId: null,
+        activeCall: null,
+        activeChannel: null,
+        ready: false,
+        _joinPromise: null,
+      });
+      return () => {};
+    }
 
     const existingClient = get().client;
-    if (existingClient && existingClient.state.connectedUser?.id === user.uid) {
+    const existingCrewId = get().clientCrewId;
+    if (existingClient && existingClient.state.connectedUser?.id === user.uid && existingCrewId === crewId) {
       console.log('[WebRTC] client already connected for', user.uid);
       set({ ready: true });
       return () => {
@@ -77,12 +100,27 @@ const useWebRTCStore = create((set, get) => ({
       };
     }
 
+    if (existingClient) {
+      existingClient.disconnectUser().catch((e) =>
+        console.warn('[WebRTC] disconnect old client failed:', e.message)
+      );
+    }
+
     console.log('[WebRTC] initializing client for', user.uid);
 
     (async () => {
+      let cancelled = false;
+      const check = () => {
+        const { user: curUser, crewId: curCrewId } = get();
+        if (curUser?.uid !== user.uid || curCrewId !== crewId) {
+          cancelled = true;
+        }
+      };
+
       try {
         if (hasExpoAudio) {
           const { status } = await requestRecordingPermissionsAsync();
+          if (cancelled) return;
           set({ isAudioPermissionGranted: status === 'granted' });
           await setAudioModeAsync({
             allowsRecording: true,
@@ -93,29 +131,28 @@ const useWebRTCStore = create((set, get) => ({
           });
         }
 
+        if (cancelled) return;
+
         let name = user.email || 'Operator';
         try {
           const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (cancelled) return;
           if (userDoc.exists()) name = userDoc.data().displayName || name;
         } catch (e) {
           // fall back to email
         }
 
+        if (cancelled) return;
+
         const token = await fetchStreamToken(user.uid, crewId);
-        if (!token) {
-          console.error('[WebRTC] token fetch returned empty');
-          return;
-        }
-        console.log('[WebRTC] token obtained, creating client');
+        if (!token || cancelled) return;
         const streamClient = StreamVideoClient.getOrCreateInstance({
           apiKey: API_KEY,
           user: { id: user.uid, name },
           token,
         });
-        console.log('[WebRTC] client created and user connected');
 
-        set({ client: streamClient, ready: true });
-        console.log('[WebRTC] ready set to true');
+        set({ client: streamClient, clientCrewId: crewId, ready: true });
       } catch (err) {
         console.error('[WebRTC] client init failed:', err);
       }
@@ -185,6 +222,12 @@ const useWebRTCStore = create((set, get) => ({
       console.log('[WebRTC] joined channel', { crewId, channelId, role });
       await activateKeepAwakeAsync();
       get().startRemoteLevelTracking();
+
+      try {
+        await get().enableNoiseCancellation();
+      } catch (e) {
+        console.warn('[WebRTC] auto NC failed:', e.message);
+      }
     })();
 
     set({ _joinPromise: promise });
@@ -220,6 +263,15 @@ const useWebRTCStore = create((set, get) => ({
     const { activeCall } = get();
     if (!activeCall) return;
     get().stopRemoteLevelTracking();
+    let wasBusy = false;
+
+    const vibrateForIncoming = () => {
+      const appState = AppState.currentState;
+      if (appState === 'background' || appState === 'inactive') {
+        Vibration.vibrate([0, 200, 100, 200]);
+      }
+    };
+
     const updateBusyState = () => {
       const { activeCall: call } = get();
       if (!call) return;
@@ -232,7 +284,12 @@ const useWebRTCStore = create((set, get) => ({
           break;
         }
       }
-      set({ channelBusy: !!talking, currentSpeaker: talking });
+      const newBusy = !!talking;
+      if (newBusy && !wasBusy) {
+        vibrateForIncoming();
+      }
+      wasBusy = newBusy;
+      set({ channelBusy: newBusy, currentSpeaker: talking });
     };
     const subscription = activeCall.state.remoteParticipants$.subscribe(updateBusyState);
     set({ _remoteLevelSubscription: subscription });
@@ -245,6 +302,7 @@ const useWebRTCStore = create((set, get) => ({
       _remoteLevelSubscription.unsubscribe();
       set({ _remoteLevelSubscription: null });
     }
+    Vibration.cancel();
     set({ channelBusy: false, currentSpeaker: null });
   },
 
@@ -288,6 +346,25 @@ const useWebRTCStore = create((set, get) => ({
       }
     } catch (error) {
       console.error('Error stopping audio transmission:', error);
+    }
+  },
+
+  enableNoiseCancellation: async () => {
+    const { activeCall, isNoiseCancellationActive, _ncInstance } = get();
+    if (!activeCall || isNoiseCancellationActive) return;
+
+    let instance = _ncInstance;
+    if (!instance) {
+      instance = new NoiseCancellation();
+      set({ _ncInstance: instance });
+    }
+
+    try {
+      await activeCall.microphone.enableNoiseCancellation(instance);
+      set({ isNoiseCancellationActive: true });
+      console.log('[WebRTC] Noise cancellation enabled by default');
+    } catch (e) {
+      console.warn('[WebRTC] Noise cancellation enable failed:', e.message);
     }
   },
 
@@ -382,18 +459,28 @@ const useWebRTCStore = create((set, get) => ({
       activeCall: null,
       activeChannel: null,
       client: null,
+      clientCrewId: null,
       ready: false,
+      isNoiseCancellationActive: false,
       _joinPromise: null,
+      _ncInstance: null,
     });
     deactivateKeepAwake();
   },
 
   leaveChannel: async () => {
-    const { activeCall } = get();
+    const { activeCall, _ncInstance } = get();
     if (!activeCall) return;
     get().stopMicWatchdog();
     get().stopLevelMeter();
     get().stopRemoteLevelTracking();
+    try {
+      if (_ncInstance) {
+        await activeCall.microphone.disableNoiseCancellation();
+      }
+    } catch (e) {
+      console.warn('[WebRTC] NC disable on leave failed:', e?.message);
+    }
     try {
       await activeCall.leave();
     } catch (e) {
