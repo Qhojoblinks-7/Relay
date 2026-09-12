@@ -247,9 +247,12 @@ export default function PTTScreen({ route, navigation }) {
       rippleLoop.current = null;
     }
     rippleAnim.setValue(0);
-    await triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
+
+    // Start transmission ASAP — run feedback in parallel, don't await
+    const transmitPromise = startTransmitting();
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
     playRadioBeep();
-    const started = await startTransmitting();
+    const started = await transmitPromise;
     if (!started || !isPressedRef.current) {
       isPressedRef.current = false;
       return;
@@ -280,9 +283,11 @@ export default function PTTScreen({ route, navigation }) {
     }
     rippleAnim.stopAnimation();
     rippleAnim.setValue(0);
-    await triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+
+    const stopPromise = stopTransmitting();
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     playRadioBeep();
-    stopTransmitting();
+    await stopPromise;
     setIsPressed(false);
   };
 

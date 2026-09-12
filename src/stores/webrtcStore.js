@@ -213,9 +213,14 @@ const useWebRTCStore = create((set, get) => ({
       const guard = (p, ms, label) =>
         Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error(label)), ms))]);
       try {
-        await guard(call.microphone.disable(), 5000, 'microphone.disable');
+        await guard(call.microphone.enable(), 5000, 'microphone.enable');
+        const stream = call.state?.mediaStream || call.mediaStream;
+        if (stream) {
+          stream.getAudioTracks().forEach((t) => { t.enabled = false; });
+        }
+        console.log('[WebRTC] Microphone stay-enabled + muted for low-latency PTT');
       } catch (e) {
-        console.warn('[WebRTC] mic disable skipped:', e.message);
+        console.warn('[WebRTC] Mic pre-enable skipped:', e.message);
       }
 
       set({ activeCall: call, activeChannel: { crewId, channelId, role } });
@@ -312,18 +317,31 @@ const useWebRTCStore = create((set, get) => ({
     if (activeChannel?.role === 'observer') return false;
     if (get().channelBusy) return false;
     try {
-      if (activeCall) await activeCall.microphone.enable();
+      if (activeCall) {
+        const stream = activeCall.state?.mediaStream || activeCall.mediaStream;
+        if (stream && stream.getAudioTracks().length > 0) {
+          stream.getAudioTracks().forEach((t) => { t.enabled = true; });
+          console.log('[WebRTC] Audio track unmuted (low-latency PTT)');
+        } else {
+          await activeCall.microphone.enable();
+          console.log('[WebRTC] Microphone ENABLED (fallback) - Transmitting');
+        }
+      }
       set({ isMuted: false });
-      console.log('[WebRTC] Microphone ENABLED - Transmitting audio feed');
       get().startLevelMeter();
       get().startMicWatchdog();
+
+      // Presence/notification in background — don't block PTT feedback
       if (activeChannel && user) {
-        await setPresence(activeChannel.crewId, user.uid, 'busy', activeChannel.channelId);
+        const ch = activeChannel;
+        const u = user;
+        const displayName = profile?.displayName || u.email;
+        setPresence(ch.crewId, u.uid, 'busy', ch.channelId).catch(() => {});
         notifyTransmission({
-          crewId: activeChannel.crewId,
-          channelId: activeChannel.channelId,
-          displayName: profile?.displayName || user.email,
-        });
+          crewId: ch.crewId,
+          channelId: ch.channelId,
+          displayName,
+        }).catch(() => {});
       }
       return true;
     } catch (error) {
@@ -337,12 +355,22 @@ const useWebRTCStore = create((set, get) => ({
     const { user } = useAuthStore.getState();
     try {
       get().stopMicWatchdog();
-      if (activeCall) await activeCall.microphone.disable();
+      if (activeCall) {
+        const stream = activeCall.state?.mediaStream || activeCall.mediaStream;
+        if (stream && stream.getAudioTracks().length > 0) {
+          stream.getAudioTracks().forEach((t) => { t.enabled = false; });
+          console.log('[WebRTC] Audio track muted (low-latency PTT)');
+        } else {
+          await activeCall.microphone.disable();
+          console.log('[WebRTC] Microphone DISABLED (fallback)');
+        }
+      }
       set({ isMuted: true });
-      console.log('[WebRTC] Microphone DISABLED - Stopped transmission');
       get().stopLevelMeter();
       if (activeChannel && user) {
-        await setPresence(activeChannel.crewId, user.uid, 'online');
+        const ch = activeChannel;
+        const u = user;
+        setPresence(ch.crewId, u.uid, 'online').catch(() => {});
       }
     } catch (error) {
       console.error('Error stopping audio transmission:', error);

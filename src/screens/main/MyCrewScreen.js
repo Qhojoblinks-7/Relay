@@ -1,7 +1,7 @@
 // src/screens/main/MyCrewScreen.js
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Share, Alert } from 'react-native';
-import { UserPlus, UserMinus, Circle, RefreshCw, QrCode } from 'lucide-react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Share, Alert, Modal, Pressable } from 'react-native';
+import { UserPlus, UserMinus, Circle, RefreshCw, QrCode, MoreHorizontal, X, Share2 } from 'lucide-react-native';
 import { COLORS, SIZES } from '../../constants/theme';
 import useAuthStore from '../../stores/authStore';
 import { buildInviteLink, generateInviteCode } from '../../lib/invite';
@@ -33,6 +33,7 @@ export default function MyCrewScreen() {
   const [channels, setChannels] = useState([]);
   const [showAddMember, setShowAddMember] = useState(false);
   const [showQR, setShowQR] = useState(false);
+  const [showActions, setShowActions] = useState(false);
 
   // Live crew roster (incl. presence) from Firestore.
   useEffect(() => {
@@ -155,7 +156,7 @@ export default function MyCrewScreen() {
       )}
 
       {/* Roster Container */}
-      <ScrollView contentContainerStyle={styles.scrollList}>
+      <ScrollView style={styles.rosterScroll} contentContainerStyle={styles.scrollList}>
         {members.length === 0 && crewId ? (
           <SkeletonList count={5} type="member" />
         ) : (
@@ -189,33 +190,92 @@ export default function MyCrewScreen() {
         )}
       </ScrollView>
 
-      {/* Admin-only actions */}
       {isAdmin && (
-        <>
-          <TouchableOpacity
-            style={styles.addMemberButton}
-            onPress={() => setShowAddMember(true)}
-          >
-            <UserPlus color={COLORS.background} size={20} style={{ marginRight: 8 }} />
-            <Text style={styles.inviteButtonText}>Add Member to Roster</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.inviteButton} onPress={() => handleShareInvite(crew?.inviteCode)}>
-            <UserPlus color={COLORS.background} size={20} style={{ marginRight: 8 }} />
-            <Text style={styles.inviteButtonText}>Share Invite Link</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.rotateButton} onPress={handleRotateInvite}>
-            <RefreshCw color={COLORS.text} size={18} style={{ marginRight: 8 }} />
-            <Text style={styles.rotateButtonText}>Rotate Invite Code</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.qrButton} onPress={() => setShowQR(true)}>
-            <QrCode color={COLORS.text} size={18} style={{ marginRight: 8 }} />
-            <Text style={styles.qrButtonText}>Show Crew QR Code</Text>
-          </TouchableOpacity>
-        </>
+        <TouchableOpacity
+          style={styles.actionsButton}
+          onPress={() => setShowActions(true)}
+        >
+          <MoreHorizontal color={COLORS.background} size={20} style={{ marginRight: 8 }} />
+          <Text style={styles.actionsButtonText}>Crew Actions</Text>
+        </TouchableOpacity>
       )}
+
+      <Modal
+        visible={showActions}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowActions(false)}
+      >
+        <View style={styles.actionOverlayContainer}>
+          <Pressable style={styles.actionOverlay} onPress={() => setShowActions(false)} />
+          <View style={styles.actionSheet}>
+            <View style={styles.actionSheetHeader}>
+              <View>
+                <Text style={styles.actionSheetTitle}>Crew Actions</Text>
+                <Text style={styles.actionSheetSubtitle}>{crew?.name || 'My Crew'}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.actionSheetClose}
+                onPress={() => setShowActions(false)}
+              >
+                <X color={COLORS.text} size={22} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.actionSheetItem}
+              onPress={() => {
+                setShowActions(false);
+                setShowAddMember(true);
+              }}
+            >
+              <View style={styles.actionSheetIcon}>
+                <UserPlus color={COLORS.primary} size={20} />
+              </View>
+              <Text style={styles.actionSheetItemText}>Add Member to Roster</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionSheetItem}
+              onPress={() => {
+                setShowActions(false);
+                handleShareInvite(crew?.inviteCode);
+              }}
+            >
+              <View style={styles.actionSheetIcon}>
+                <Share2 color={COLORS.primary} size={20} />
+              </View>
+              <Text style={styles.actionSheetItemText}>Share Invite Link</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionSheetItem}
+              onPress={() => {
+                setShowActions(false);
+                handleRotateInvite();
+              }}
+            >
+              <View style={styles.actionSheetIcon}>
+                <RefreshCw color={COLORS.primary} size={20} />
+              </View>
+              <Text style={styles.actionSheetItemText}>Rotate Invite Code</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionSheetItem}
+              onPress={() => {
+                setShowActions(false);
+                setShowQR(true);
+              }}
+            >
+              <View style={styles.actionSheetIcon}>
+                <QrCode color={COLORS.primary} size={20} />
+              </View>
+              <Text style={styles.actionSheetItemText}>Show Crew QR Code</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <QRCodeModal
         visible={showQR}
@@ -308,57 +368,77 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     padding: 6,
   },
-  inviteButton: {
-    backgroundColor: COLORS.primary,
-    borderRadius: 20,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
+  rosterScroll: {
+    flex: 1,
   },
-  inviteButtonText: {
-    color: COLORS.background,
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  addMemberButton: {
+  actionsButton: {
     backgroundColor: COLORS.text,
     borderRadius: 20,
     paddingVertical: 14,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop: 4,
     marginBottom: 12,
   },
-  rotateButton: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderColor: COLORS.textMuted,
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingVertical: 12,
-    marginBottom: 20,
-  },
-  rotateButtonText: {
-    color: COLORS.text,
+  actionsButtonText: {
+    color: COLORS.background,
     fontWeight: 'bold',
-    fontSize: 14,
+    fontSize: 16,
   },
-  qrButton: {
+  actionOverlayContainer: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  actionOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+  },
+  actionSheet: {
+    backgroundColor: COLORS.secondary,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 92,
+  },
+  actionSheetHeader: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderColor: COLORS.textMuted,
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingVertical: 12,
-    marginBottom: 20,
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 18,
   },
-  qrButtonText: {
+  actionSheetTitle: {
     color: COLORS.text,
+    fontSize: 20,
     fontWeight: 'bold',
-    fontSize: 14,
+  },
+  actionSheetSubtitle: {
+    color: COLORS.textMuted,
+    fontSize: 13,
+    marginTop: 3,
+  },
+  actionSheetClose: {
+    padding: 4,
+  },
+  actionSheetItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  actionSheetIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  actionSheetItemText: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

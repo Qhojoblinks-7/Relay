@@ -14,6 +14,8 @@ import {
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { Eye, EyeOff } from "lucide-react-native";
 import useAuthStore from "../../stores/authStore";
+import { auth } from "../../lib/firebase";
+import { signOut } from "firebase/auth";
 import { globalStyles } from "../../constants/globalStyles";
 import { COLORS, SIZES } from "../../constants/theme";
 import AuthHeader from "../../components/AuthHeader";
@@ -42,12 +44,18 @@ export default function CreateAccountScreen() {
     try {
       if (joinCrewId && joinCode) {
         await signUpOnly({ email, password, displayName });
-        await joinCrewAsExistingUser({ crewId: joinCrewId, code: joinCode, displayName });
+        try {
+          await joinCrewAsExistingUser({ crewId: joinCrewId, code: joinCode, displayName });
+        } catch (joinErr) {
+          await signOut(auth).catch(() => {});
+          useAuthStore.getState().setAuthError(null);
+          throw joinErr;
+        }
       } else {
         await signUp({ email, password, displayName, crewName: crewName || "My Crew" });
       }
     } catch (e) {
-      // authError surfaced from context
+      // authError surfaced from store
     } finally {
       setLoading(false);
     }

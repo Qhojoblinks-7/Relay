@@ -1,6 +1,6 @@
 // src/screens/auth/SignInScreen.js
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Eye, EyeOff } from 'lucide-react-native';
 import { COLORS, SIZES } from '../../constants/theme';
@@ -29,8 +29,8 @@ export default function SignInScreen() {
           routes: [{ name: 'JoinCrew', params: { joinCrewId, joinCode } }],
         });
       }
-    } catch (err) {
-      Alert.alert('Sign In Failed', err.message || 'Please check your credentials.');
+    } catch (_err) {
+      // authError surfaced inline via store
     }
   };
 

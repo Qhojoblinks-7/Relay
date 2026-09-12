@@ -17,7 +17,7 @@ function useInviteDeepLink() {
   useEffect(() => {
     const handleUrl = (url) => {
       if (!url || !url.includes('c=') || !url.includes('code=')) return;
-      navigation.navigate('JoinCrew', { prefillLink: url });
+      navigation.navigate('JoinCrew', { prefillLink: url, allowSkip: true });
     };
 
     Linking.getInitialURL().then(handleUrl).catch(() => {});

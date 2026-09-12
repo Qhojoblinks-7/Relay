@@ -1,6 +1,5 @@
 // src/context/WebRTCContext.js
 import { useEffect } from 'react';
-import { StreamVideo } from '@stream-io/video-react-native-sdk';
 import useWebRTCStore from '../stores/webrtcStore';
 import useAuthStore from '../stores/authStore';
 
@@ -14,11 +13,5 @@ export const WebRTCProvider = ({ children }) => {
     return cleanup;
   }, [user?.uid, crewId]);
 
-  const client = useWebRTCStore((state) => state.client);
-
-  return (
-    <>
-      {client ? <StreamVideo client={client}>{children}</StreamVideo> : children}
-    </>
-  );
+  return children;
 };

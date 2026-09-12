@@ -6,6 +6,7 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  deleteUser,
 } from 'firebase/auth';
 import {
   doc,
@@ -151,9 +152,10 @@ const useAuthStore = create((set, get) => ({
   signUpOnly: async ({ email, password, displayName }) => {
     const { setAuthError } = get();
     setAuthError(null);
+    let userCred;
     try {
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      const uid = cred.user.uid;
+      userCred = await createUserWithEmailAndPassword(auth, email, password);
+      const uid = userCred.user.uid;
 
       await setDoc(doc(db, 'users', uid), {
         displayName,
@@ -164,6 +166,9 @@ const useAuthStore = create((set, get) => ({
       await get().loadUserProfile(uid);
       return { uid };
     } catch (err) {
+      if (userCred?.user) {
+        try { await deleteUser(userCred.user); } catch (_) {}
+      }
       setAuthError(toFriendlyError(err));
       throw err;
     }
@@ -218,6 +223,7 @@ const useAuthStore = create((set, get) => ({
   joinCrewAsExistingUser: async ({ crewId, code, displayName }) => {
     const { user, setAuthError } = get();
     setAuthError(null);
+    let memberCreated = false;
     try {
       if (!user) {
         throw new Error('You must be signed in to join a crew.');
@@ -230,6 +236,7 @@ const useAuthStore = create((set, get) => ({
         displayName: displayName || user.email,
         joinedAt: serverTimestamp(),
       });
+      memberCreated = true;
 
       const crewDoc = await getDoc(doc(db, 'crews', crewId));
       if (!crewDoc.exists()) {
@@ -238,6 +245,7 @@ const useAuthStore = create((set, get) => ({
       }
       if (crewDoc.data().inviteCode !== code) {
         await doc(db, 'crews', crewId, 'members', uid).delete();
+        memberCreated = false;
         throw new Error('Invalid or expired invite code.');
       }
 
@@ -257,6 +265,9 @@ const useAuthStore = create((set, get) => ({
       await get().loadUserProfile(uid);
       return { uid, crewId };
     } catch (err) {
+      if (memberCreated) {
+        try { await doc(db, 'crews', crewId, 'members', user.uid).delete(); } catch (_) {}
+      }
       setAuthError(toFriendlyError(err));
       throw err;
     }
