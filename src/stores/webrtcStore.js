@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Animated, AppState, Vibration } from 'react-native';
+import { Animated, AppState, Vibration, NativeEventEmitter, NativeModules, Platform } from 'react-native';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import {
   StreamVideoClient,
@@ -13,6 +13,7 @@ import { callIdFor, fetchStreamToken, getChannelRole } from '../lib/getStream';
 import { setPresence } from '../lib/presence';
 import { notifyTransmission } from '../lib/notifications';
 import useAuthStore from './authStore';
+import InCallManager from 'react-native-incall-manager';
 
 let hasExpoAudio = true;
 let requestRecordingPermissionsAsync, setAudioModeAsync;
@@ -23,6 +24,11 @@ try {
 } catch (e) {
   hasExpoAudio = false;
 }
+
+const hasInCallManager = typeof InCallManager !== 'undefined' && InCallManager !== null;
+
+let _audioDeviceSub = null;
+let _btPermissionSub = null;
 
 const API_KEY =
   process.env.EXPO_PUBLIC_GETSTREAM_API_KEY ||
@@ -50,6 +56,10 @@ const useWebRTCStore = create((set, get) => ({
   channelBusy: false,
   currentSpeaker: null,
   levelValue: new Animated.Value(0),
+  audioDevice: 'speaker',
+  hasBluetoothDevice: false,
+  hasWiredHeadset: false,
+  isProximityNear: false,
 
   _levelSubscription: null,
   _remoteLevelSubscription: null,
@@ -57,6 +67,7 @@ const useWebRTCStore = create((set, get) => ({
   _initPromise: null,
   _joinPromise: null,
   _ncInstance: null,
+  _audioDeviceSub: null,
 
   initializeClient: (user, crewId) => {
     if (!user) {
@@ -127,7 +138,10 @@ const useWebRTCStore = create((set, get) => ({
             playsInSilentMode: true,
             shouldPlayInBackground: true,
             interruptionMode: 'doNotMix',
-            shouldRouteThroughEarpiece: true,
+            // Don't force earpiece — let the system pick the best route
+            // (Bluetooth headset, wired headphone, or speaker) so we don't
+            // override an active Bluetooth connection on iOS.
+            shouldRouteThroughEarpiece: false,
           });
         }
 
@@ -450,9 +464,55 @@ const useWebRTCStore = create((set, get) => ({
     }
   },
 
+  requestBluetoothPermission: async () => {
+    if (Platform.OS !== 'android') return true;
+    if (!_btPermissionSub) {
+      try {
+        const { PermissionsAndroid } = require('react-native');
+        const granted = await PermissionsAndroid.requestMultiple([
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+        ]);
+        const allGranted = Object.values(granted).every((v) => v === PermissionsAndroid.RESULTS.GRANTED);
+        return allGranted;
+      } catch (e) {
+        console.warn('[Audio Engine] Bluetooth permission request failed:', e.message);
+        return false;
+      }
+    }
+    return true;
+  },
+
   toggleSpeakerphone: async () => {
     const next = !get().isSpeakerphone;
     set({ isSpeakerphone: next });
+    const mode = {
+      allowsRecording: true,
+      playsInSilentMode: true,
+      shouldPlayInBackground: true,
+      interruptionMode: 'duckOthers',
+      shouldRouteThroughEarpiece: false,
+    };
+    if (hasExpoAudio) {
+      try {
+        await setAudioModeAsync(mode);
+      } catch (e) {
+        console.warn('[Audio Engine] speakerphone toggle failed:', e.message);
+      }
+    }
+    if (hasInCallManager) {
+      try {
+        InCallManager.setForceSpeakerphoneOn(next);
+      } catch (e) {
+        console.warn('[Audio Engine] InCallManager speaker toggle failed:', e.message);
+      }
+    }
+  },
+
+  setAudioRoute: async (route) => {
+    const { hasBluetoothDevice, hasWiredHeadset } = get();
+    set({ audioDevice: route });
+
     if (hasExpoAudio) {
       try {
         await setAudioModeAsync({
@@ -460,11 +520,60 @@ const useWebRTCStore = create((set, get) => ({
           playsInSilentMode: true,
           shouldPlayInBackground: true,
           interruptionMode: 'duckOthers',
-          shouldRouteThroughEarpiece: !next,
+          shouldRouteThroughEarpiece: route === 'earpiece' && !hasBluetoothDevice && !hasWiredHeadset,
         });
       } catch (e) {
-        console.warn('[Audio Engine] speakerphone toggle failed:', e.message);
+        console.warn('[Audio Engine] setAudioRoute expo failed:', e.message);
       }
+    }
+
+    if (hasInCallManager) {
+      try {
+        const force = route === 'speaker' || route === 'bluetooth';
+        InCallManager.setForceSpeakerphoneOn(force);
+      } catch (e) {
+        console.warn('[Audio Engine] setAudioRoute InCallManager failed:', e.message);
+      }
+    }
+  },
+
+  startAudioDeviceTracking: () => {
+    if (!hasInCallManager) return;
+    if (_audioDeviceSub) return;
+    try {
+      const emitter = new NativeEventEmitter(NativeModules.RNInCallManager);
+      _audioDeviceSub = emitter.addListener('AudioBundle', ({ devices }) => {
+        if (!devices) return;
+        const hasBT = devices.some((d) => d.type === 'bluetooth' || d.type === 'bluetoothA2dp' || d.type === 'bluetoothSco');
+        const hasWH = devices.some((d) => d.type === 'wiredHeadset' || d.type === 'headphones');
+        set({
+          hasBluetoothDevice: hasBT,
+          hasWiredHeadset: hasWH,
+        });
+      });
+    } catch (e) {
+      try {
+        if (typeof InCallManager.addEventListener === 'function') {
+          _audioDeviceSub = InCallManager.addEventListener('AudioBundle', ({ devices }) => {
+            if (!devices) return;
+            const hasBT = devices.some((d) => d.type === 'bluetooth' || d.type === 'bluetoothA2dp' || d.type === 'bluetoothSco');
+            const hasWH = devices.some((d) => d.type === 'wiredHeadset' || d.type === 'headphones');
+            set({
+              hasBluetoothDevice: hasBT,
+              hasWiredHeadset: hasWH,
+            });
+          });
+        }
+      } catch (e2) {
+        console.warn('[Audio Engine] device tracking setup failed:', e2.message);
+      }
+    }
+  },
+
+  stopAudioDeviceTracking: () => {
+    if (_audioDeviceSub) {
+      _audioDeviceSub.remove?.();
+      _audioDeviceSub = null;
     }
   },
 
@@ -490,9 +599,11 @@ const useWebRTCStore = create((set, get) => ({
       clientCrewId: null,
       ready: false,
       isNoiseCancellationActive: false,
+      isSpeakerphone: false,
       _joinPromise: null,
       _ncInstance: null,
     });
+    get().stopAudioDeviceTracking();
     deactivateKeepAwake();
   },
 

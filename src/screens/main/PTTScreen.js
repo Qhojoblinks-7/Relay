@@ -18,6 +18,8 @@ const RING_CONFIGS = [
   { base: 1.9, amp: 1.05, opacity: 0.16 },
 ];
 
+const BLUETOOTH_PERMISSION_TIMEOUT_MS = 5000;
+
 export default function PTTScreen({ route, navigation }) {
   const { crewId, channelId, channelName = 'General' } = route.params || {};
   const startTransmitting = useWebRTCStore((state) => state.startTransmitting);
@@ -33,6 +35,11 @@ export default function PTTScreen({ route, navigation }) {
   const canTalk = !!activeChannel && activeChannel.role !== 'observer';
   const channelBusy = useWebRTCStore((state) => state.channelBusy);
   const currentSpeaker = useWebRTCStore((state) => state.currentSpeaker);
+  const hasBluetoothDevice = useWebRTCStore((state) => state.hasBluetoothDevice);
+  const startAudioDeviceTracking = useWebRTCStore((state) => state.startAudioDeviceTracking);
+  const stopAudioDeviceTracking = useWebRTCStore((state) => state.stopAudioDeviceTracking);
+  const requestBluetoothPermission = useWebRTCStore((state) => state.requestBluetoothPermission);
+  const setAudioRoute = useWebRTCStore((state) => state.setAudioRoute);
 
   const soundRef = useRef(null);
   const rippleAnim = useRef(new Animated.Value(0)).current;
@@ -95,20 +102,38 @@ export default function PTTScreen({ route, navigation }) {
   const setForceSpeakerphone = useCallback(async (on) => {
     const toggleSpeakerphone = useWebRTCStore.getState().toggleSpeakerphone;
     const isCurrentlySpeaker = useWebRTCStore.getState().isSpeakerphone;
+    const hasBT = useWebRTCStore.getState().hasBluetoothDevice;
+    const setAudioRoute = useWebRTCStore.getState().setAudioRoute;
     if (on && !isCurrentlySpeaker) {
       await toggleSpeakerphone();
     } else if (!on && isCurrentlySpeaker) {
       await toggleSpeakerphone();
     }
-    try {
-      InCallManager.setForceSpeakerphoneOn(on);
-    } catch (e) {
-      console.warn('[PTT] InCallManager.setForceSpeakerphoneOn failed:', e.message);
+    // When a Bluetooth device is connected, don't force speakerphone — let
+    // audio route through the BT device instead of cutting it off.
+    if (!hasBT && typeof setAudioRoute === 'function') {
+      try {
+        await setAudioRoute(on ? 'speaker' : 'earpiece');
+      } catch (e) {
+        console.warn('[PTT] setAudioRoute failed:', e.message);
+      }
+    } else if (typeof InCallManager.setForceSpeakerphoneOn === 'function' && !hasBT) {
+      try {
+        InCallManager.setForceSpeakerphoneOn(on);
+      } catch (e) {
+        console.warn('[PTT] InCallManager.setForceSpeakerphoneOn failed:', e.message);
+      }
     }
   }, []);
 
   const enableHandsetMode = useCallback(async () => {
     console.log('[PTT] enableHandsetMode start');
+    try {
+      await requestBluetoothPermission();
+    } catch (e) {
+      console.warn('[PTT] bluetooth permission failed:', e.message);
+    }
+    startAudioDeviceTracking();
     try {
       InCallManager.start({ media: 'audio' });
       console.log('[PTT] InCallManager started (audio)');
@@ -139,18 +164,29 @@ export default function PTTScreen({ route, navigation }) {
       try {
         const emitter = new NativeEventEmitter(NativeModules.RNInCallManager);
         sub = emitter.addListener('ProximitySensor', ({ near }) => {
-          console.log('[PTT] proximity sensor event:', { near });
-          setForceSpeakerphone(!near).catch((e) =>
-            console.warn('[PTT] proximity audio route failed:', e.message)
-          );
+          console.log('[PTT] proximity event:', { near, hasBluetoothDevice });
+          // Only toggle to earpiece when no Bluetooth device is connected.
+          // With a BT headset, keeping speaker=false won't route to BT;
+          // let the system handle routing instead.
+          if (!hasBluetoothDevice) {
+            setForceSpeakerphone(!near).catch((e) =>
+              console.warn('[PTT] proximity audio route failed:', e.message)
+            );
+          } else {
+            console.log('[PTT] Bluetooth active — skipping proximity audio route change');
+          }
         });
       } catch (e) {
         if (typeof InCallManager.addEventListener === 'function') {
           sub = InCallManager.addEventListener('ProximitySensor', ({ near }) => {
-            console.log('[PTT] proximity event (InCall fallback):', { near });
-            setForceSpeakerphone(!near).catch((e) =>
-              console.warn('[PTT] proximity audio route failed:', e.message)
-            );
+            console.log('[PTT] proximity event (fallback):', { near, hasBluetoothDevice });
+            if (!hasBluetoothDevice) {
+              setForceSpeakerphone(!near).catch((e) =>
+                console.warn('[PTT] proximity audio route failed:', e.message)
+              );
+            } else {
+              console.log('[PTT] Bluetooth active — skipping proximity audio route change');
+            }
           });
         }
       }
@@ -191,6 +227,7 @@ export default function PTTScreen({ route, navigation }) {
     } catch (e) {
       console.warn('[PTT] InCallManager.stop failed:', e.message);
     }
+    stopAudioDeviceTracking();
     setHandsetMode(false);
     console.log('[PTT] handsetMode set to false');
   }, [setForceSpeakerphone]);
