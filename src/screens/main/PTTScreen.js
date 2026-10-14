@@ -8,6 +8,7 @@ import InCallManager from 'react-native-incall-manager';
 import VolumeManager from 'react-native-volume-manager';
 import { COLORS, SIZES } from '../../constants/theme';
 import useWebRTCStore from '../../stores/webrtcStore';
+import { startBackgroundPTTService, stopBackgroundPTTService } from '../../services/BackgroundPTTService';
 
 const { width } = Dimensions.get('window');
 const RING_SIZE = Math.min(width * 0.55, 200);
@@ -39,7 +40,8 @@ export default function PTTScreen({ route, navigation }) {
   const canTalk = !!activeChannel && activeChannel.role !== 'observer';
   const channelBusy = useWebRTCStore((state) => state.channelBusy);
   const currentSpeaker = useWebRTCStore((state) => state.currentSpeaker);
-  const hasBluetoothDevice = useWebRTCStore((state) => state.hasBluetoothDevice);
+   const hasBluetoothDevice = useWebRTCStore((state) => state.hasBluetoothDevice);
+  const hasWiredHeadset = useWebRTCStore((state) => state.hasWiredHeadset);
   const startAudioDeviceTracking = useWebRTCStore((state) => state.startAudioDeviceTracking);
   const stopAudioDeviceTracking = useWebRTCStore((state) => state.stopAudioDeviceTracking);
   const requestBluetoothPermission = useWebRTCStore((state) => state.requestBluetoothPermission);
@@ -65,9 +67,10 @@ export default function PTTScreen({ route, navigation }) {
 
   useEffect(() => {
     console.log('[PTT] mount');
-
+    startBackgroundPTTService();
     return () => {
       console.log('[PTT] unmount');
+      stopBackgroundPTTService();
       if (proximitySubRef.current) {
         proximitySubRef.current.remove?.();
         proximitySubRef.current = null;
@@ -445,15 +448,15 @@ export default function PTTScreen({ route, navigation }) {
           </Text>
         </Pressable>
 
-        <Pressable
-          onPress={toggleAudioRoute}
-          style={[styles.handsetBadge, audioRoute === 'earpiece' && styles.handsetBadgeActive]}
-        >
-          <Smartphone color={audioRoute === 'earpiece' ? COLORS.primary : COLORS.textMuted} size={20} />
-          <Text style={[styles.handsetText, audioRoute === 'earpiece' && styles.handsetTextActive]}>
-            {audioRoute === 'earpiece' ? 'Earpiece' : 'Speaker'}
-          </Text>
-        </Pressable>
+         <Pressable
+           onPress={toggleAudioRoute}
+           style={[styles.handsetBadge, audioRoute === 'earpiece' && styles.handsetBadgeActive]}
+         >
+           <Smartphone color={audioRoute === 'earpiece' ? COLORS.primary : COLORS.textMuted} size={20} />
+           <Text style={[styles.handsetText, audioRoute === 'earpiece' && styles.handsetTextActive]}>
+             {hasWiredHeadset ? 'Wired' : hasBluetoothDevice ? 'Bluetooth' : audioRoute === 'earpiece' ? 'Earpiece' : 'Speaker'}
+           </Text>
+         </Pressable>
       </View>
 
       <Text style={styles.title}>{channelName}</Text>

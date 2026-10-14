@@ -8,6 +8,7 @@ import { WebRTCProvider } from "./src/context/WebRTCContext";
 import RootNavigator from "./src/navigation/RootNavigator";
 import { COLORS } from "./src/constants/theme";
 import { setupBackgroundFcm } from "./src/lib/notifications";
+import { initBackgroundPTT, startBackgroundPTTService } from "./src/services/BackgroundPTTService";
 
 SplashScreen.preventAutoHideAsync();
 SplashScreen.setOptions({
@@ -22,6 +23,11 @@ export default function App() {
 
   const onReady = useCallback(() => {
     setIsReady(true);
+  }, []);
+
+  useEffect(() => {
+    initBackgroundPTT();
+    startBackgroundPTTService();
   }, []);
 
   useEffect(() => {
