@@ -321,11 +321,13 @@ const useWebRTCStore = create((set, get) => ({
         Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error(label)), ms))]);
       try {
         await guard(call.microphone.enable(), 5000, 'microphone.enable');
-        const stream = call.state?.mediaStream || call.mediaStream;
-        if (stream) {
-          stream.getAudioTracks().forEach((t) => { t.enabled = false; });
-        }
-        console.log('[WebRTC] Microphone stay-enabled + muted for low-latency PTT');
+        // Start in muted state so no audio is transmitted until PTT is pressed.
+        // The SDK clones tracks before publishing to the SFU (Publisher.cloneTrack),
+        // so toggling track.enabled on the original track does NOT affect what
+        // remote participants receive. We must use microphone.disable() which
+        // properly stops publishing the stream to the SFU.
+        await call.microphone.disable();
+        console.log('[WebRTC] Mic enabled then disabled (start muted)');
       } catch (e) {
         console.warn('[WebRTC] Mic pre-enable skipped:', e.message);
       }
@@ -426,14 +428,8 @@ const useWebRTCStore = create((set, get) => ({
     if (get().channelBusy) return false;
     try {
       if (activeCall) {
-        const stream = activeCall.state?.mediaStream || activeCall.mediaStream;
-        if (stream && stream.getAudioTracks().length > 0) {
-          stream.getAudioTracks().forEach((t) => { t.enabled = true; });
-          console.log('[WebRTC] Audio track unmuted (low-latency PTT)');
-        } else {
-          await activeCall.microphone.enable();
-          console.log('[WebRTC] Microphone ENABLED (fallback) - Transmitting');
-        }
+        await activeCall.microphone.enable();
+        console.log('[WebRTC] Microphone enabled - Transmitting');
       }
       set({ isMuted: false });
       get().startLevelMeter();
@@ -466,14 +462,8 @@ const useWebRTCStore = create((set, get) => ({
       get().stopMicWatchdog();
       set({ isMuted: true });
       if (activeCall) {
-        const stream = activeCall.state?.mediaStream || activeCall.mediaStream;
-        if (stream && stream.getAudioTracks().length > 0) {
-          stream.getAudioTracks().forEach((t) => { t.enabled = false; });
-          console.log('[WebRTC] Audio track muted (low-latency PTT)');
-        } else {
-          await activeCall.microphone.disable();
-          console.log('[WebRTC] Microphone DISABLED (fallback)');
-        }
+        await activeCall.microphone.disable();
+        console.log('[WebRTC] Microphone disabled - Muted');
       }
       get().stopLevelMeter();
       if (activeChannel && user) {
