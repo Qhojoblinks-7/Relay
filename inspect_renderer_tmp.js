@@ -1,0 +1,14 @@
+const r = require('react-test-renderer');
+const React = require('react');
+const inst = r.create(React.createElement('div', null, 'hello'));
+const root = inst.root;
+console.log('root_props:', Object.getOwnPropertyNames(root));
+console.log('root_children_length:', root.children.length);
+console.log('root_toJSON_type:', typeof root.toJSON);
+console.log('root_findType:', typeof root.find);
+console.log('root_findAllType:', typeof root.findAll);
+console.log('root_instance_type:', typeof root.instance);
+console.log('root_type:', typeof root.type);
+const json = inst.toJSON();
+console.log('inst_toJSON:', JSON.stringify(json));
+inst.unmount();

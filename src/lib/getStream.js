@@ -39,17 +39,23 @@ export async function getChannelRole(crewId, channelId, uid) {
 //   caller's member channels (call_cids) using the server-side API secret.
 // Dev mode (extra.getstream.useDevToken) uses a runtime dev token; otherwise it
 // calls the Cloud Function and falls back to a dev token if that fails.
-export async function fetchStreamToken(uid, crewId) {
-  // Dev mode: skip the backend token function entirely (e.g. when Cloud Functions
-  // can't be deployed — they require the Blaze plan / a card). Dev tokens are
-  // unrestricted, so this is fine for a prototype but NOT for production.
+//
+// An optional `config` override lets tests (and callers) inject useDevToken /
+// secret without relying on the Expo Constants module.
+export async function fetchStreamToken(uid, crewId, config = {}) {
+  console.log('[GetStream] fetchStreamToken called', { uid, crewId });
   const useDevToken =
-    Constants.expoConfig?.extra?.getstream?.useDevToken ||
-    Constants.manifest?.extra?.getstream?.useDevToken;
+    config.useDevToken != null
+      ? config.useDevToken
+      : Constants.expoConfig?.extra?.getstream?.useDevToken ||
+        Constants.manifest?.extra?.getstream?.useDevToken;
   const devSecret =
-    process.env.EXPO_PUBLIC_GETSTREAM_SECRET ||
-    Constants.expoConfig?.extra?.getstream?.secret ||
-    Constants.manifest?.extra?.getstream?.secret;
+    config.secret != null
+      ? config.secret
+      : process.env.EXPO_PUBLIC_GETSTREAM_SECRET ||
+        Constants.expoConfig?.extra?.getstream?.secret ||
+        Constants.manifest?.extra?.getstream?.secret;
+  console.log('[GetStream] useDevToken:', useDevToken, 'devSecret present:', !!devSecret);
   if (useDevToken) {
     console.warn('[GetStream] dev mode: using client dev token for', uid);
     return createDevToken(uid, devSecret);

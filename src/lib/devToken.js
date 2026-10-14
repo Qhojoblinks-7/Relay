@@ -151,6 +151,15 @@ function hmacSha256(keyBytes, msgBytes) {
 // so this works without restarting the Expo manifest.
 const DEV_ONLY_SECRET = process.env.EXPO_PUBLIC_GETSTREAM_SECRET || '';
 
+// Track the last issued iat so two tokens minted within the same clock second
+// still differ (otherwise the JWT payload+signature would be byte-identical).
+let lastIat = 0;
+
+// Reset the iat sequence (used by tests). Exported for test isolation only.
+export function __resetDevTokenState() {
+  lastIat = 0;
+}
+
 // Mint a GetStream token bound to `userId` (must match the client's user.id),
 // signed with the real API secret. Dev-only.
 export function createDevToken(userId, secret) {
@@ -162,10 +171,13 @@ export function createDevToken(userId, secret) {
   }
   const header = { alg: 'HS256', typ: 'JWT' };
   const now = Math.floor(Date.now() / 1000);
+  // Ensure a strictly increasing iat even when called faster than 1s.
+  const iat = now > lastIat ? now : lastIat + 1;
+  lastIat = iat;
   const payload = {
     user_id: userId,
-    iat: now,
-    exp: now + 60 * 60 * 24 * 365 * 100, // ~100 years
+    iat,
+    exp: iat + 60 * 60 * 24 * 365 * 100, // ~100 years from issuance
   };
   const h = base64url(strToBytes(JSON.stringify(header)));
   const p = base64url(strToBytes(JSON.stringify(payload)));

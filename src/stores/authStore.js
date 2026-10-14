@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { auth, db } from '../lib/firebase';
 import {
   createUserWithEmailAndPassword,
@@ -22,6 +22,27 @@ import {
 import { generateInviteCode } from '../lib/invite';
 import { setPresence } from '../lib/presence';
 import { registerFcmToken, setupFcmListeners } from '../lib/notifications';
+
+let requestRecordingPermissionsAsync;
+try {
+  const expoAudio = require('expo-audio');
+  requestRecordingPermissionsAsync = expoAudio.requestRecordingPermissionsAsync;
+} catch (e) {
+  requestRecordingPermissionsAsync = null;
+}
+
+const requestAudioPermission = async () => {
+  if (Platform.OS !== 'web' && requestRecordingPermissionsAsync) {
+    try {
+      const { status } = await requestRecordingPermissionsAsync();
+      console.log('[Auth] Audio permission:', status);
+      return status === 'granted';
+    } catch (e) {
+      console.warn('[Auth] Audio permission request failed:', e.message);
+    }
+  }
+  return true;
+};
 
 const FRIENDLY_ERRORS = {
   'auth/email-already-in-use': 'This email is already registered. Try signing in instead.',
@@ -78,13 +99,16 @@ const useAuthStore = create((set, get) => ({
   setLoading: (loading) => set({ loading }),
 
   loadUserProfile: async (uid) => {
+    console.log('[Auth] loadUserProfile called for uid:', uid);
     const userDoc = await getDoc(doc(db, 'users', uid));
     if (!userDoc.exists()) {
+      console.log('[Auth] user doc does not exist');
       set({ profile: null, crew: null, crewRole: null });
       return;
     }
 
     const data = userDoc.data();
+    console.log('[Auth] user doc data:', { crewId: data.crewId, displayName: data.displayName });
     set({ profile: data, crewId: data.crewId || null });
 
     if (data.crewId) {
@@ -110,7 +134,7 @@ const useAuthStore = create((set, get) => ({
       const uid = cred.user.uid;
 
       const crewRef = await addDoc(collection(db, 'crews'), {
-        name: crewName,
+        name: crewName || 'My Crew',
         ownerUid: uid,
         inviteCode: generateInviteCode(),
         createdAt: serverTimestamp(),
@@ -142,6 +166,7 @@ const useAuthStore = create((set, get) => ({
       );
 
       await get().loadUserProfile(uid);
+      await requestAudioPermission();
       return { uid, crewId };
     } catch (err) {
       setAuthError(toFriendlyError(err));
@@ -164,6 +189,7 @@ const useAuthStore = create((set, get) => ({
       });
 
       await get().loadUserProfile(uid);
+      await requestAudioPermission();
       return { uid };
     } catch (err) {
       if (userCred?.user) {
@@ -213,6 +239,7 @@ const useAuthStore = create((set, get) => ({
       }
 
       await get().loadUserProfile(uid);
+      await requestAudioPermission();
       return { uid, crewId };
     } catch (err) {
       setAuthError(toFriendlyError(err));
@@ -263,6 +290,7 @@ const useAuthStore = create((set, get) => ({
       }
 
       await get().loadUserProfile(uid);
+      await requestAudioPermission();
       return { uid, crewId };
     } catch (err) {
       if (memberCreated) {
@@ -299,10 +327,12 @@ const useAuthStore = create((set, get) => ({
 
 export const initializeAuth = () => {
   const unsubAuth = onAuthStateChanged(auth, async (fbUser) => {
+    console.log('[Auth] onAuthStateChanged', { uid: fbUser?.uid });
     useAuthStore.getState().setAuthError(null);
     if (fbUser) {
       useAuthStore.setState({ user: fbUser });
       await useAuthStore.getState().loadUserProfile(fbUser.uid);
+      await requestAudioPermission();
     } else {
       useAuthStore.setState({
         user: null,

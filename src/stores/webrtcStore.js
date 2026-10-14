@@ -64,7 +64,9 @@ const useWebRTCStore = create((set, get) => ({
   _levelSubscription: null,
   _remoteLevelSubscription: null,
   _micWatchdogRef: null,
+  _micWatchdogId: null,
   _initPromise: null,
+  _initPromiseCrewId: null,
   _joinPromise: null,
   _ncInstance: null,
   _audioDeviceSub: null,
@@ -89,12 +91,16 @@ const useWebRTCStore = create((set, get) => ({
         activeChannel: null,
         ready: false,
         _joinPromise: null,
+        _initPromise: null,
+        _initPromiseCrewId: null,
       });
       return () => {};
     }
 
     const existingClient = get().client;
     const existingCrewId = get().clientCrewId;
+    const existingInitPromise = get()._initPromise;
+
     if (existingClient && existingClient.state.connectedUser?.id === user.uid && existingCrewId === crewId) {
       console.log('[WebRTC] client already connected for', user.uid);
       set({ ready: true });
@@ -111,6 +117,27 @@ const useWebRTCStore = create((set, get) => ({
       };
     }
 
+    if (existingInitPromise) {
+      console.log('[WebRTC] initialization already in progress, returning existing promise');
+      // If the in-progress init is for a different crewId, clear it so new one can run
+      if (get()._initPromiseCrewId !== crewId) {
+        console.log('[WebRTC] initPromise crewId mismatch, clearing for new init', { old: get()._initPromiseCrewId, new: crewId });
+        set({ _initPromise: null, _initPromiseCrewId: null });
+      } else {
+        return () => {
+          deactivateKeepAwake();
+          get().stopMicWatchdog();
+          get().stopLevelMeter();
+          get().stopRemoteLevelTracking();
+          const { activeCall } = get();
+          if (activeCall) {
+            activeCall.leave().catch((e) => console.warn('[WebRTC] cleanup leave failed:', e.message));
+          }
+          set({ activeCall: null, activeChannel: null, _joinPromise: null });
+        };
+      }
+    }
+
     if (existingClient) {
       existingClient.disconnectUser().catch((e) =>
         console.warn('[WebRTC] disconnect old client failed:', e.message)
@@ -119,58 +146,87 @@ const useWebRTCStore = create((set, get) => ({
 
     console.log('[WebRTC] initializing client for', user.uid);
 
-    (async () => {
+    const initPromise = (async () => {
+      console.log('[WebRTC] initPromise started');
       let cancelled = false;
       const check = () => {
-        const { user: curUser, crewId: curCrewId } = get();
+        const { user: curUser, crewId: curCrewId } = useAuthStore.getState();
         if (curUser?.uid !== user.uid || curCrewId !== crewId) {
           cancelled = true;
         }
       };
 
       try {
+        console.log('[WebRTC] requesting audio permissions');
         if (hasExpoAudio) {
+          console.log('[WebRTC] calling requestRecordingPermissionsAsync...');
           const { status } = await requestRecordingPermissionsAsync();
+          console.log('[WebRTC] audio permission status:', status);
+          check();
+          console.log('[WebRTC] check() after permission, cancelled:', cancelled);
           if (cancelled) return;
           set({ isAudioPermissionGranted: status === 'granted' });
+          console.log('[WebRTC] calling setAudioModeAsync...');
           await setAudioModeAsync({
             allowsRecording: true,
             playsInSilentMode: true,
             shouldPlayInBackground: true,
             interruptionMode: 'doNotMix',
-            // Don't force earpiece — let the system pick the best route
-            // (Bluetooth headset, wired headphone, or speaker) so we don't
-            // override an active Bluetooth connection on iOS.
             shouldRouteThroughEarpiece: false,
           });
+          console.log('[WebRTC] setAudioModeAsync done');
+        } else {
+          console.log('[WebRTC] expo-audio not available, skipping permission request');
         }
 
+        check();
+        console.log('[WebRTC] check() after audio mode, cancelled:', cancelled);
         if (cancelled) return;
 
         let name = user.email || 'Operator';
         try {
+          console.log('[WebRTC] fetching user doc for name...');
           const userDoc = await getDoc(doc(db, 'users', user.uid));
+          check();
+          console.log('[WebRTC] check() after user doc, cancelled:', cancelled);
           if (cancelled) return;
           if (userDoc.exists()) name = userDoc.data().displayName || name;
         } catch (e) {
+          console.warn('[WebRTC] user doc fetch failed:', e.message);
           // fall back to email
         }
 
+        // Use UID as name to avoid DuplicateUsernameError from stale connections
+        // Display name is shown in UI but GetStream requires unique username per connection
+        const uniqueName = `${name}_${user.uid.slice(0, 8)}`;
+
+        check();
+        console.log('[WebRTC] check() before token fetch, cancelled:', cancelled);
         if (cancelled) return;
 
+        console.log('[WebRTC] fetching token for', user.uid, crewId);
         const token = await fetchStreamToken(user.uid, crewId);
-        if (!token || cancelled) return;
+        check();
+        if (!token || cancelled) {
+          console.warn('[WebRTC] no token or cancelled');
+          return;
+        }
+        console.log('[WebRTC] got token, creating client');
         const streamClient = StreamVideoClient.getOrCreateInstance({
           apiKey: API_KEY,
-          user: { id: user.uid, name },
+          user: { id: user.uid, name: uniqueName },
           token,
         });
+        console.log('[WebRTC] client created, setting ready');
 
-        set({ client: streamClient, clientCrewId: crewId, ready: true });
+        set({ client: streamClient, clientCrewId: crewId, ready: true, _initPromise: null });
       } catch (err) {
         console.error('[WebRTC] client init failed:', err);
+        set({ _initPromise: null, _initPromiseCrewId: null, ready: false, client: null, clientCrewId: null });
       }
     })();
+
+    set({ _initPromise: initPromise, _initPromiseCrewId: crewId });
 
     return () => {
       deactivateKeepAwake();
@@ -186,15 +242,27 @@ const useWebRTCStore = create((set, get) => ({
   },
 
   joinChannel: async (crewId, channelId) => {
-    const { _joinPromise } = get();
+    const { _joinPromise, activeCall, client, ready } = get();
+    console.log('[WebRTC] joinChannel called', { crewId, channelId, hasClient: !!client, ready, hasJoinPromise: !!_joinPromise, hasActiveCall: !!activeCall });
     if (_joinPromise) {
       console.log('[WebRTC] joinChannel skipped: join already in progress');
       return;
     }
 
+    // Clean up any existing call before joining new one (handles ghost connections)
+    if (activeCall) {
+      console.log('[WebRTC] leaving existing call before joining new channel');
+      try {
+        await activeCall.leave();
+      } catch (e) {
+        console.warn('[WebRTC] failed to leave existing call:', e.message);
+      }
+      set({ activeCall: null, activeChannel: null });
+    }
+
     const promise = (async () => {
-      const { client, activeChannel } = get();
-      if (!client) {
+      const { client: currentClient, activeChannel } = get();
+      if (!currentClient) {
         console.warn('[WebRTC] joinChannel skipped: client not ready');
         return;
       }
@@ -209,20 +277,45 @@ const useWebRTCStore = create((set, get) => ({
 
       console.log('[WebRTC] joinChannel start', { crewId, channelId });
       const uid = useAuthStore.getState().user?.uid;
+      console.log('[WebRTC] joinChannel looking up role for uid:', uid);
       const role = await getChannelRole(crewId, channelId, uid);
       console.log('[WebRTC] joinChannel role lookup', { crewId, channelId, uid, role });
       if (!role) {
         throw new Error('You are not a member of this channel.');
       }
 
-      const call = client.call('default', callIdFor(crewId, channelId));
+      const call = currentClient.call('default', callIdFor(crewId, channelId));
       console.log('[WebRTC] joinChannel calling call.join', { callId: callIdFor(crewId, channelId) });
-      const joinPromise = call.join({ create: true, ring: false, notify: false });
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('call.join timed out after 15s')), 15000)
-      );
-      await Promise.race([joinPromise, timeoutPromise]);
-      console.log('[WebRTC] joinChannel call.join succeeded');
+      let joinSuccess = false;
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const joinPromise = call.join({ create: true, ring: false, notify: false });
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('call.join timed out after 15s')), 15000)
+          );
+          await Promise.race([joinPromise, timeoutPromise]);
+          console.log('[WebRTC] joinChannel call.join succeeded');
+          joinSuccess = true;
+          break;
+        } catch (err) {
+          console.warn(`[WebRTC] call.join attempt ${attempt} failed:`, err.message);
+          if (attempt === 1 && err.message?.includes('DuplicateUsernameError')) {
+            console.log('[WebRTC] DuplicateUsernameError detected, forcing leave and retrying');
+            try {
+              await call.leave();
+            } catch (e) {
+              console.warn('[WebRTC] forced leave failed:', e.message);
+            }
+            // Small delay before retry
+            await new Promise(r => setTimeout(r, 500));
+          } else {
+            throw err;
+          }
+        }
+      }
+      if (!joinSuccess) {
+        throw new Error('Failed to join call after retries');
+      }
 
       const guard = (p, ms, label) =>
         Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error(label)), ms))]);
@@ -328,6 +421,7 @@ const useWebRTCStore = create((set, get) => ({
   startTransmitting: async () => {
     const { activeCall, activeChannel, profile } = get();
     const { user } = useAuthStore.getState();
+    console.log('[WebRTC] startTransmitting called', { isMuted: get().isMuted, channelBusy: get().channelBusy, activeChannelRole: activeChannel?.role });
     if (activeChannel?.role === 'observer') return false;
     if (get().channelBusy) return false;
     try {
@@ -367,8 +461,10 @@ const useWebRTCStore = create((set, get) => ({
   stopTransmitting: async () => {
     const { activeCall, activeChannel } = get();
     const { user } = useAuthStore.getState();
+    console.log('[WebRTC] stopTransmitting called', { isMuted: get().isMuted });
     try {
       get().stopMicWatchdog();
+      set({ isMuted: true });
       if (activeCall) {
         const stream = activeCall.state?.mediaStream || activeCall.mediaStream;
         if (stream && stream.getAudioTracks().length > 0) {
@@ -379,7 +475,6 @@ const useWebRTCStore = create((set, get) => ({
           console.log('[WebRTC] Microphone DISABLED (fallback)');
         }
       }
-      set({ isMuted: true });
       get().stopLevelMeter();
       if (activeChannel && user) {
         const ch = activeChannel;
@@ -426,12 +521,12 @@ const useWebRTCStore = create((set, get) => ({
     }
 
     try {
+      set({ isNoiseCancellationActive: next });
       if (next) {
         await activeCall.microphone.enableNoiseCancellation(instance);
       } else {
         await activeCall.microphone.disableNoiseCancellation();
       }
-      set({ isNoiseCancellationActive: next });
     } catch (e) {
       console.warn('[WebRTC] Noise cancellation toggle failed:', e.message);
     }
@@ -439,12 +534,21 @@ const useWebRTCStore = create((set, get) => ({
 
   startMicWatchdog: () => {
     get().stopMicWatchdog();
+    const watchdogId = Date.now(); // unique ID for this watchdog instance
+    set({ _micWatchdogId: watchdogId });
     const interval = setInterval(async () => {
+      // Verify this watchdog is still the current one (not stopped/replaced)
+      if (get()._micWatchdogId !== watchdogId) {
+        console.log('[WebRTC] Watchdog: stale instance, exiting');
+        return;
+      }
       const currentCall = get().activeCall;
       const currentMuted = get().isMuted;
+      console.log('[WebRTC] Watchdog tick', { hasCall: !!currentCall, isMuted: currentMuted });
       if (!currentCall || currentMuted) return;
       try {
         const isEnabled = currentCall.microphone.enabled;
+        console.log('[WebRTC] Watchdog: microphone.enabled =', isEnabled);
         if (!isEnabled) {
           console.log('[WebRTC] Watchdog: mic dropped, re-enabling');
           await currentCall.microphone.enable();
@@ -460,7 +564,8 @@ const useWebRTCStore = create((set, get) => ({
     const { _micWatchdogRef } = get();
     if (_micWatchdogRef) {
       clearInterval(_micWatchdogRef);
-      set({ _micWatchdogRef: null });
+      set({ _micWatchdogRef: null, _micWatchdogId: null });
+      console.log('[WebRTC] Watchdog stopped');
     }
   },
 
@@ -511,17 +616,21 @@ const useWebRTCStore = create((set, get) => ({
 
   setAudioRoute: async (route) => {
     const { hasBluetoothDevice, hasWiredHeadset } = get();
+    console.log('[Audio Engine] setAudioRoute called', { route, hasBluetoothDevice, hasWiredHeadset });
     set({ audioDevice: route });
 
     if (hasExpoAudio) {
       try {
+        const shouldRouteThroughEarpiece = route === 'earpiece' && !hasBluetoothDevice && !hasWiredHeadset;
+        console.log('[Audio Engine] expo setAudioModeAsync', { shouldRouteThroughEarpiece });
         await setAudioModeAsync({
           allowsRecording: true,
           playsInSilentMode: true,
           shouldPlayInBackground: true,
           interruptionMode: 'duckOthers',
-          shouldRouteThroughEarpiece: route === 'earpiece' && !hasBluetoothDevice && !hasWiredHeadset,
+          shouldRouteThroughEarpiece,
         });
+        console.log('[Audio Engine] expo setAudioModeAsync success');
       } catch (e) {
         console.warn('[Audio Engine] setAudioRoute expo failed:', e.message);
       }
@@ -530,6 +639,7 @@ const useWebRTCStore = create((set, get) => ({
     if (hasInCallManager) {
       try {
         const force = route === 'speaker' || route === 'bluetooth';
+        console.log('[Audio Engine] InCallManager.setForceSpeakerphoneOn', { force });
         InCallManager.setForceSpeakerphoneOn(force);
       } catch (e) {
         console.warn('[Audio Engine] setAudioRoute InCallManager failed:', e.message);
@@ -544,8 +654,10 @@ const useWebRTCStore = create((set, get) => ({
       const emitter = new NativeEventEmitter(NativeModules.RNInCallManager);
       _audioDeviceSub = emitter.addListener('AudioBundle', ({ devices }) => {
         if (!devices) return;
+        console.log('[Audio Engine] AudioBundle received', devices);
         const hasBT = devices.some((d) => d.type === 'bluetooth' || d.type === 'bluetoothA2dp' || d.type === 'bluetoothSco');
         const hasWH = devices.some((d) => d.type === 'wiredHeadset' || d.type === 'headphones');
+        console.log('[Audio Engine] device tracking update', { hasBT, hasWH });
         set({
           hasBluetoothDevice: hasBT,
           hasWiredHeadset: hasWH,
@@ -556,8 +668,10 @@ const useWebRTCStore = create((set, get) => ({
         if (typeof InCallManager.addEventListener === 'function') {
           _audioDeviceSub = InCallManager.addEventListener('AudioBundle', ({ devices }) => {
             if (!devices) return;
+            console.log('[Audio Engine] AudioBundle received (fallback)', devices);
             const hasBT = devices.some((d) => d.type === 'bluetooth' || d.type === 'bluetoothA2dp' || d.type === 'bluetoothSco');
             const hasWH = devices.some((d) => d.type === 'wiredHeadset' || d.type === 'headphones');
+            console.log('[Audio Engine] device tracking update (fallback)', { hasBT, hasWH });
             set({
               hasBluetoothDevice: hasBT,
               hasWiredHeadset: hasWH,
@@ -601,6 +715,8 @@ const useWebRTCStore = create((set, get) => ({
       isNoiseCancellationActive: false,
       isSpeakerphone: false,
       _joinPromise: null,
+      _initPromise: null,
+      _initPromiseCrewId: null,
       _ncInstance: null,
     });
     get().stopAudioDeviceTracking();

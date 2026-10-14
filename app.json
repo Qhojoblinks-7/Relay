@@ -96,9 +96,9 @@
         "projectId": "7ddc4c74-4862-4eb7-b42c-8612a585d552"
       },
       "getstream": {
-        "apiKey": "YOUR_GETSTREAM_API_KEY",
+        "apiKey": "prt2s7y2rc45",
         "useDevToken": true,
-        "secret": "YOUR_GETSTREAM_SECRET"
+        "secret": "bgx3h8fpzhf38ttjpbfhs7g93css7kqwkhyekehrm758aq3b6yftgj4u2xhxjnxv"
       },
       "firebase": {
         "apiKey": "YOUR_FIREBASE_API_KEY",

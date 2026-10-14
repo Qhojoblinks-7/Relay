@@ -1,12 +1,14 @@
 // src/lib/invite.js
 //
-// Invite link helpers. The canonical share format is:
-//   relay.app/join?c={crewId}&code={inviteCode}
-// For local deep-linking in the prototype we use the `relay://` custom scheme
-// (production should serve the relay.app universal link + associated domains).
+// Invite link helpers. The canonical share format uses HTTPS so links
+// appear as clickable hyperlinks in messages, email, and social apps:
+//   https://relay.app/join?c={crewId}&code={inviteCode}
+// Deep link handlers accept both https:// and relay:// schemes.
+// iOS requires associated domains + Android requires assetlinks.json for
+// universal/App Links to open the app directly from HTTPS.
 
 export function buildInviteLink(crewId, code) {
-  return `relay://join?c=${encodeURIComponent(crewId)}&code=${encodeURIComponent(code)}`;
+  return `https://relay.app/join?c=${encodeURIComponent(crewId)}&code=${encodeURIComponent(code)}`;
 }
 
 // Generate a short, human-shareable invite token (reusable, admin-rotatable).
@@ -21,8 +23,12 @@ export function generateInviteCode() {
 
 // Extract crewId (`c`) and invite code (`code`) from an invite link or raw code.
 // Returns { crewId, code, raw }. When only a raw token is pasted, crewId is ''.
+// Supports:
+//   1. Deep link:    relay://join?c={crewId}&code={code}
+//   2. HTTPS link:   relay.app/join?c={crewId}&code={code}
+//   3. Space-sep:    {crewId} {code}  (short, human-readable)
 export function parseInvite(input) {
-  if (!input) return { crewId: '', code: '', raw: '' };
+  if (!input) return { crewId: '', code: '', raw: input };
   const cMatch = input.match(/[?&]c=([^&\s#]+)/);
   const codeMatch = input.match(/[?&]code=([^&\s#]+)/);
   if (cMatch && codeMatch) {
@@ -32,6 +38,19 @@ export function parseInvite(input) {
       raw: input,
     };
   }
-  // No query params: treat the whole string as a raw invite code.
+  // A link may carry only the `code` param (no crew id `c`); extract it.
+  if (codeMatch) {
+    return { crewId: '', code: decodeURIComponent(codeMatch[1]), raw: input };
+  }
+  // No query params: try space-separated "crewId code" format.
+  const parts = input.trim().split(/\s+/);
+  if (parts.length === 2) {
+    const [crewId, code] = parts;
+    // Sanity-check length ranges: Firestore doc IDs are ~20 chars, invite codes ~8.
+    if (crewId.length >= 10 && code.length >= 4) {
+      return { crewId: decodeURIComponent(crewId), code: decodeURIComponent(code), raw: input };
+    }
+  }
+  // Fall back: treat the whole string as a raw invite code.
   return { crewId: '', code: input.trim(), raw: input };
 }

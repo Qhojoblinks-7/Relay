@@ -1,6 +1,6 @@
 // src/screens/main/PTTScreen.js
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, Animated, Vibration, Dimensions, NativeEventEmitter, NativeModules } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Animated, Vibration, Dimensions, NativeEventEmitter, NativeModules, DeviceEventEmitter } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Wifi, Volume2, X, Mic, SlidersHorizontal, Smartphone } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -19,6 +19,10 @@ const RING_CONFIGS = [
 ];
 
 const BLUETOOTH_PERMISSION_TIMEOUT_MS = 5000;
+
+// Android key codes
+const KEYCODE_VOLUME_UP = 24;
+const KEYCODE_VOLUME_DOWN = 25;
 
 export default function PTTScreen({ route, navigation }) {
   const { crewId, channelId, channelName = 'General' } = route.params || {};
@@ -53,23 +57,14 @@ export default function PTTScreen({ route, navigation }) {
   const volumeAdjustingRef = useRef(false);
   const volumePressTimerRef = useRef(null);
   const [handsetMode, setHandsetMode] = useState(false);
+  const [audioRoute, setAudioRouteState] = useState('speaker'); // 'speaker' | 'earpiece'
   const volumeSubRef = useRef(null);
-  const lastKnownVolume = useRef(0.65);
 
   joinChannelRef.current = joinChannel;
   leaveChannelRef.current = leaveChannel;
 
   useEffect(() => {
     console.log('[PTT] mount');
-    (async () => {
-      try {
-        const { volume } = await VolumeManager.getVolume();
-        lastKnownVolume.current = volume;
-        setVolume(volume);
-      } catch (e) {
-        // Volume manager not ready
-      }
-    })();
 
     return () => {
       console.log('[PTT] unmount');
@@ -85,11 +80,6 @@ export default function PTTScreen({ route, navigation }) {
         // cleanup
       }
       setHandsetMode(false);
-      if (volumeSubRef.current) {
-        volumeSubRef.current.remove();
-        volumeSubRef.current = null;
-      }
-      try { VolumeManager.showNativeVolumeUI({ enabled: true }); } catch (e) {}
       if (volumePressTimerRef.current) {
         clearTimeout(volumePressTimerRef.current);
         volumePressTimerRef.current = null;
@@ -103,28 +93,45 @@ export default function PTTScreen({ route, navigation }) {
     const toggleSpeakerphone = useWebRTCStore.getState().toggleSpeakerphone;
     const isCurrentlySpeaker = useWebRTCStore.getState().isSpeakerphone;
     const hasBT = useWebRTCStore.getState().hasBluetoothDevice;
+    const hasWired = useWebRTCStore.getState().hasWiredHeadset;
     const setAudioRoute = useWebRTCStore.getState().setAudioRoute;
+    console.log('[PTT] setForceSpeakerphone called', { on, isCurrentlySpeaker, hasBT, hasWired });
     if (on && !isCurrentlySpeaker) {
+      console.log('[PTT] toggling speakerphone ON');
       await toggleSpeakerphone();
     } else if (!on && isCurrentlySpeaker) {
+      console.log('[PTT] toggling speakerphone OFF (earpiece)');
       await toggleSpeakerphone();
     }
     // When a Bluetooth device is connected, don't force speakerphone — let
     // audio route through the BT device instead of cutting it off.
     if (!hasBT && typeof setAudioRoute === 'function') {
       try {
-        await setAudioRoute(on ? 'speaker' : 'earpiece');
+        const route = on ? 'speaker' : 'earpiece';
+        await setAudioRoute(route);
+        setAudioRouteState(route);
+        console.log('[PTT] setAudioRoute success:', route);
       } catch (e) {
         console.warn('[PTT] setAudioRoute failed:', e.message);
       }
     } else if (typeof InCallManager.setForceSpeakerphoneOn === 'function' && !hasBT) {
       try {
         InCallManager.setForceSpeakerphoneOn(on);
+        setAudioRouteState(on ? 'speaker' : 'earpiece');
+        console.log('[PTT] InCallManager.setForceSpeakerphoneOn:', on);
       } catch (e) {
         console.warn('[PTT] InCallManager.setForceSpeakerphoneOn failed:', e.message);
       }
+    } else {
+      console.log('[PTT] setForceSpeakerphone skipped - hasBT:', hasBT, 'hasWired:', hasWired, 'setAudioRoute available:', typeof setAudioRoute === 'function');
     }
   }, []);
+
+  const toggleAudioRoute = useCallback(async () => {
+    const nextRoute = audioRoute === 'speaker' ? 'earpiece' : 'speaker';
+    console.log('[PTT] manual toggle audio route to:', nextRoute);
+    await setForceSpeakerphone(nextRoute === 'speaker');
+  }, [audioRoute, setForceSpeakerphone]);
 
   const enableHandsetMode = useCallback(async () => {
     console.log('[PTT] enableHandsetMode start');
@@ -164,28 +171,37 @@ export default function PTTScreen({ route, navigation }) {
       try {
         const emitter = new NativeEventEmitter(NativeModules.RNInCallManager);
         sub = emitter.addListener('ProximitySensor', ({ near }) => {
-          console.log('[PTT] proximity event:', { near, hasBluetoothDevice });
-          // Only toggle to earpiece when no Bluetooth device is connected.
-          // With a BT headset, keeping speaker=false won't route to BT;
-          // let the system handle routing instead.
-          if (!hasBluetoothDevice) {
-            setForceSpeakerphone(!near).catch((e) =>
+          const hasWiredHeadset = useWebRTCStore.getState().hasWiredHeadset;
+          console.log('[PTT] proximity event:', { near, hasBluetoothDevice, hasWiredHeadset });
+          // Only toggle to earpiece when no Bluetooth/wired device is connected.
+          // With a BT headset or wired headset, let the system handle routing.
+          // TEST: Try both directions - if near=true when phone at ear, use !near. If inverted, use near.
+          // Default: near=true (phone at ear) -> earpiece (speakerphone=false)
+          const shouldUseEarpiece = near; // Try inverted: was !near
+          console.log('[PTT] proximity: shouldUseEarpiece=', shouldUseEarpiece, '(near=', near, ')');
+          if (!hasBluetoothDevice && !hasWiredHeadset) {
+            console.log('[PTT] proximity: calling setForceSpeakerphone', !shouldUseEarpiece);
+            setForceSpeakerphone(!shouldUseEarpiece).catch((e) =>
               console.warn('[PTT] proximity audio route failed:', e.message)
             );
           } else {
-            console.log('[PTT] Bluetooth active — skipping proximity audio route change');
+            console.log('[PTT] BT/wired active — skipping proximity audio route change');
           }
         });
       } catch (e) {
         if (typeof InCallManager.addEventListener === 'function') {
           sub = InCallManager.addEventListener('ProximitySensor', ({ near }) => {
-            console.log('[PTT] proximity event (fallback):', { near, hasBluetoothDevice });
-            if (!hasBluetoothDevice) {
-              setForceSpeakerphone(!near).catch((e) =>
+            const hasWiredHeadset = useWebRTCStore.getState().hasWiredHeadset;
+            console.log('[PTT] proximity event (fallback):', { near, hasBluetoothDevice, hasWiredHeadset });
+            const shouldUseEarpiece = near;
+            console.log('[PTT] proximity fallback: shouldUseEarpiece=', shouldUseEarpiece);
+            if (!hasBluetoothDevice && !hasWiredHeadset) {
+              console.log('[PTT] proximity fallback: calling setForceSpeakerphone', !shouldUseEarpiece);
+              setForceSpeakerphone(!shouldUseEarpiece).catch((e) =>
                 console.warn('[PTT] proximity audio route failed:', e.message)
               );
             } else {
-              console.log('[PTT] Bluetooth active — skipping proximity audio route change');
+              console.log('[PTT] BT/wired active — skipping proximity audio route change');
             }
           });
         }
@@ -235,8 +251,15 @@ export default function PTTScreen({ route, navigation }) {
   // Switch the voice client to the selected crew channel once the voice client
   // is ready. Non-members will be rejected inside joinChannel.
   useEffect(() => {
-    console.log('[PTT] join effect', { ready, crewId, channelId });
-    if (!ready || !crewId || !channelId) return;
+    console.log('[PTT] join effect', { ready, crewId, channelId, activeChannel, canTalk, channelBusy });
+    if (!ready) {
+      console.log('[PTT] join effect: NOT ready, waiting for WebRTC client');
+      return;
+    }
+    if (!crewId || !channelId) {
+      console.log('[PTT] join effect: missing crewId or channelId');
+      return;
+    }
     console.log('[PTT] joining channel', { crewId, channelId, channelName });
     joinChannelRef.current(crewId, channelId).catch((e) => {
       console.warn('[PTT] Could not join channel:', e.message);
@@ -249,13 +272,13 @@ export default function PTTScreen({ route, navigation }) {
 
   useFocusEffect(
     useCallback(() => {
-      console.log('[PTT] screen focused');
+      console.log('[PTT] screen focused, ready:', ready, 'crewId:', crewId, 'channelId:', channelId);
       enableHandsetMode();
       return () => {
         console.log('[PTT] screen unfocused');
         disableHandsetMode();
       };
-    }, [enableHandsetMode, disableHandsetMode])
+    }, [enableHandsetMode, disableHandsetMode, ready, crewId, channelId])
   );
 
   const playRadioBeep = async () => {
@@ -277,6 +300,7 @@ export default function PTTScreen({ route, navigation }) {
   };
 
   const handlePressIn = async () => {
+    console.log('[PTT] handlePressIn called', { canTalk, channelBusy });
     if (!canTalk || channelBusy) return;
     isPressedRef.current = true;
     if (rippleLoop.current) {
@@ -313,6 +337,7 @@ export default function PTTScreen({ route, navigation }) {
   };
 
   const handlePressOut = async () => {
+    console.log('[PTT] handlePressOut called');
     isPressedRef.current = false;
     if (rippleLoop.current) {
       rippleLoop.current.stop();
@@ -357,59 +382,44 @@ export default function PTTScreen({ route, navigation }) {
     handlePressOutRef.current = handlePressOut;
   });
 
+  // Native volume key interceptor (from MainActivity.kt)
   useEffect(() => {
-    if (!activeChannel || !VolumeManager?.addVolumeListener) return;
+    if (!activeChannel) return;
 
-    let showNativeUI = true;
-    try {
-      VolumeManager.showNativeVolumeUI({ enabled: false });
-      showNativeUI = false;
-      console.log('[PTT] native volume UI suppressed');
-    } catch (e) {
-      console.warn('[PTT] showNativeVolumeUI not available:', e.message);
-    }
-
-    const subscription = VolumeManager.addVolumeListener(({ volume }) => {
-      if (volumeAdjustingRef.current) return;
+    const handleVolumeKey = (event) => {
+      console.log('[PTT] native volume key event', event);
       if (!canTalk || channelBusy) return;
 
-      const previous = lastKnownVolume.current;
-      lastKnownVolume.current = volume;
-
-      const delta = volume - previous;
-
-      if (delta > 0.02) {
-        if (volumePressTimerRef.current) {
-          clearTimeout(volumePressTimerRef.current);
-        } else {
-          handlePressInRef.current?.();
-        }
-        volumePressTimerRef.current = setTimeout(() => {
-          volumePressTimerRef.current = null;
+      const { keyCode, action } = event;
+      if (action === 'down') {
+        if (keyCode === KEYCODE_VOLUME_UP) {
+          console.log('[PTT] VOLUME_UP down -> PTT pressIn');
+          if (volumePressTimerRef.current) {
+            clearTimeout(volumePressTimerRef.current);
+          } else {
+            handlePressInRef.current?.();
+          }
+          volumePressTimerRef.current = setTimeout(() => {
+            volumePressTimerRef.current = null;
+            handlePressOutRef.current?.();
+          }, 150);
+        } else if (keyCode === KEYCODE_VOLUME_DOWN) {
+          console.log('[PTT] VOLUME_DOWN down -> PTT pressOut');
+          if (volumePressTimerRef.current) {
+            clearTimeout(volumePressTimerRef.current);
+            volumePressTimerRef.current = null;
+          }
           handlePressOutRef.current?.();
-        }, 150);
-      } else if (delta < -0.02) {
-        if (volumePressTimerRef.current) {
-          clearTimeout(volumePressTimerRef.current);
-          volumePressTimerRef.current = null;
         }
-        handlePressOutRef.current?.();
       }
-    });
+    };
 
-    volumeSubRef.current = subscription;
-
+    DeviceEventEmitter.addListener('PTTVolumeKey', handleVolumeKey);
     return () => {
+      DeviceEventEmitter.removeAllListeners('PTTVolumeKey');
       if (volumePressTimerRef.current) {
         clearTimeout(volumePressTimerRef.current);
         volumePressTimerRef.current = null;
-      }
-      if (showNativeUI) {
-        try { VolumeManager.showNativeVolumeUI({ enabled: true }); } catch (e) {}
-      }
-      if (volumeSubRef.current) {
-        volumeSubRef.current.remove();
-        volumeSubRef.current = null;
       }
     };
   }, [activeChannel, canTalk, channelBusy]);
@@ -435,12 +445,15 @@ export default function PTTScreen({ route, navigation }) {
           </Text>
         </Pressable>
 
-        <View style={[styles.handsetBadge, handsetMode && styles.handsetBadgeActive]}>
-          <Smartphone color={handsetMode ? COLORS.primary : COLORS.textMuted} size={20} />
-          <Text style={[styles.handsetText, handsetMode && styles.handsetTextActive]}>
-            {handsetMode ? 'Handset' : 'Phone'}
+        <Pressable
+          onPress={toggleAudioRoute}
+          style={[styles.handsetBadge, audioRoute === 'earpiece' && styles.handsetBadgeActive]}
+        >
+          <Smartphone color={audioRoute === 'earpiece' ? COLORS.primary : COLORS.textMuted} size={20} />
+          <Text style={[styles.handsetText, audioRoute === 'earpiece' && styles.handsetTextActive]}>
+            {audioRoute === 'earpiece' ? 'Earpiece' : 'Speaker'}
           </Text>
-        </View>
+        </Pressable>
       </View>
 
       <Text style={styles.title}>{channelName}</Text>
@@ -502,15 +515,21 @@ export default function PTTScreen({ route, navigation }) {
         {channelBusy && !currentSpeaker && (
           <Text style={styles.speakerText}>Channel busy</Text>
         )}
+        {!ready && canTalk && (
+          <Text style={styles.listenOnlyText}>Connecting to voice...</Text>
+        )}
         {!canTalk && (
-          <Pressable onPress={() => crewId && channelId && joinChannelRef.current(crewId, channelId).catch((e) => console.warn('[PTT] retry join failed:', e.message))}>
+          <Pressable onPress={() => {
+            console.log('[PTT] Retry Join pressed', { crewId, channelId, ready, activeChannel });
+            crewId && channelId && joinChannelRef.current(crewId, channelId).catch((e) => console.warn('[PTT] retry join failed:', e.message));
+          }}>
             <Text style={styles.listenOnlyText}>Retry Join</Text>
           </Pressable>
         )}
         {!canTalk && (
           <Text style={styles.listenOnlyText}>Listen-only · observers can't transmit</Text>
         )}
-        {canTalk && !channelBusy && !isPressed && (
+        {canTalk && !channelBusy && !isPressed && ready && (
           <Text style={styles.listenOnlyText}>Press volume up or tap to talk</Text>
         )}
         {canTalk && isPressed && (
